@@ -59,6 +59,27 @@ const tn = function(n=0) { // Token numérico
   });
 };
 
+const o = function(opciones) { // Token pipe (A|B)
+  return Mila.AST.nuevoNodo({
+    tipoNodo: "Pipe",
+    hijos: {opciones}
+  });
+};
+
+const opt = function(nodo) { // Token opcional (A?)
+  return Mila.AST.nuevoNodo({
+    tipoNodo: "Opcional",
+    hijos: {nodo}
+  });
+};
+
+const rep = function(nodo) { // Token cíclico (A*)
+  return Mila.AST.nuevoNodo({
+    tipoNodo: "Estrella",
+    hijos: {nodo}
+  });
+};
+
 Mila.alIniciar(function() {
   Mila.Tipo.NodoAST.strInstancia = Demo.strNodo_;
   Demo.ignorables = [];
@@ -162,13 +183,7 @@ Demo.configuracion = {
       }}
     ],
     COMANDO: [
-      {tokens:[tt("Si"),tv("EXPRESIÓN"),tg("COMANDO"),tt("Si"),tt("no"),tg("COMANDO")],nodo:function(tokens) {
-        return Mila.AST.nuevoNodo({
-          tipoNodo: "AlternativaCondicionalCompuesta",
-          hijos: {condición:tokens[1], ramaPositiva:tokens[2], ramaNegativa:tokens[5]}
-        });
-      }},
-      {tokens:[tt("Si"),tv("EXPRESIÓN"),tg("COMANDO"),ts(),tt("Si"),tt("no"),tg("COMANDO")],nodo:function(tokens) {
+      {tokens:[tt("Si"),tv("EXPRESIÓN"),tg("COMANDO"),opt(ts()),tt("Si"),tt("no"),tg("COMANDO")],nodo:function(tokens) {
         return Mila.AST.nuevoNodo({
           tipoNodo: "AlternativaCondicionalCompuesta",
           hijos: {condición:tokens[1], ramaPositiva:tokens[2], ramaNegativa:tokens[5]}
@@ -186,17 +201,10 @@ Demo.configuracion = {
           hijos: {cantidad:tokens[1], cuerpo:tokens[2]}
         });
       }},
-      {tokens:[tt("Mientras"),tv("EXPRESIÓN"),tg("COMANDO")],nodo:function(tokens) {
+      {tokens:[o([tt("Mientras"),tt("Hasta")]),tv("EXPRESIÓN"),tg("COMANDO")],nodo:function(tokens) {
         return Mila.AST.nuevoNodo({
           tipoNodo: "RepeticiónCondicional",
-          campos: {clase: "Mientras"},
-          hijos: {condición:tokens[1], cuerpo:tokens[2]}
-        });
-      }},
-      {tokens:[tt("Hasta"),tv("EXPRESIÓN"),tg("COMANDO")],nodo:function(tokens) {
-        return Mila.AST.nuevoNodo({
-          tipoNodo: "RepeticiónCondicional",
-          campos: {clase: "Hasta"},
+          campos: {clase: tokens[0].texto()},
           hijos: {condición:tokens[1], cuerpo:tokens[2]}
         });
       }},
@@ -367,12 +375,20 @@ Demo.coincideToken = function(token1, token2) {
     }
     return true;
   }
+  switch (token1.tipoNodo) {
+    case "Pipe":
+      return token1.opciones().algunoCumple_(t => Demo.coincideToken(t, token2));
+    case "Opcional":
+      return Demo.coincideToken(token1.nodo, token2);
+    case "Estrella":
+      return Demo.coincideToken(token1.nodo, token2);
+  }
   return false;
 };
 
 Demo.coincideTokensDesde = function(tokens1, tokens2, desde) {
   let i=0;
-  while (i<tokens1.length && Demo.coincideToken(tokens1[i], tokens2[desde+i])) {
+  while (i<tokens1.length && Demo.coincideToken(tokens2[desde+i], tokens1[i])) {
     i++;
   }
   return i == tokens1.length;
@@ -513,17 +529,22 @@ Demo.línea_AjustadaA_ = function(líneas, inicio, construccion) {
   }
   while(i<tokens.length) {
     let proximo = tokens[i];
-    if (j >= línea.length && proximo.tipoNodo != "Salto") {
-      return Mila.Nada;
-    }
-    if (proximo.tipoNodo == "Salto") {
-      if (líneas.length < resultado.i) {
+    if (j >= línea.length) {
+      if (Demo.vieneUnSalto(proximo)) {
+        if (líneas.length < resultado.i) {
+          return Mila.Nada;
+        }
+        línea = líneas[resultado.i];
+        resultado.i++;
+        if (proximo.tipoNodo != "Estrella") {
+          i++;
+        }
+        j=0;
+      } else if (Demo.puedeTerminarAcá(tokens, i)) {
+        return resultado;
+      } else {
         return Mila.Nada;
       }
-      línea = líneas[resultado.i];
-      resultado.i++;
-      i++;
-      j=0;
     } else if (proximo.tipoNodo == "Varios") {
       if (i==tokens.length-1) {
         let contenido = línea.sinLosPrimeros_(j);
@@ -542,23 +563,12 @@ Demo.línea_AjustadaA_ = function(líneas, inicio, construccion) {
         varios.push(línea[j]);
         j++;
       }
-      if (j >= línea.length && proximoProximo.tipoNodo != "Salto") {
-        return Mila.Nada;
-      }
-      if (Demo.seAjustaVarios(varios, proximo.clave())) {
-        resultado.línea.push(Demo.nodoVarios(varios, proximo.clave()));
-      } else {
-        return Mila.Nada;
-      }
       if (j < línea.length) {
-        let tokenAjustado = Demo.token_AjustadoA_(línea[j], proximoProximo);
-        if (tokenAjustado.esAlgo()) {
-          resultado.línea.push(tokenAjustado);
+        if (Demo.seAjustaVarios(varios, proximo.clave())) {
+          resultado.línea.push(Demo.nodoVarios(varios, proximo.clave()));
         } else {
           return Mila.Nada;
         }
-        i++;
-        j++;
       }
     } else if (Demo.coincideToken(proximo, línea[j])) {
       let tokenAjustado = Demo.token_AjustadoA_(línea[j], proximo);
@@ -567,8 +577,12 @@ Demo.línea_AjustadaA_ = function(líneas, inicio, construccion) {
       } else {
         return Mila.Nada;
       }
-      i++;
+      if (proximo.tipoNodo != "Estrella") {
+        i++;
+      }
       j++;
+    } else if (Demo.esOpcional(proximo)) {
+      i++;
     } else {
       return Mila.Nada;
     }
@@ -581,11 +595,11 @@ Demo.línea_AjustadaA_ = function(líneas, inicio, construccion) {
 
 Demo.token_AjustadoA_ = function(token, tokenConstruccion) {
   // PRE: los tokens coinciden
-  if (tokenConstruccion.tipoNodo == "Grupo") {
-    return Demo.nodoGrupo(token);
-  } else {
-    return token;
+  switch (tokenConstruccion.tipoNodo) {
+    case "Grupo":
+      return Demo.nodoGrupo(token);
   }
+  return token;
 };
 
 Demo.tokenLínea = function(línea) {
@@ -647,6 +661,22 @@ Demo.nodoGrupo = function(nodo) {
     tipoNodo: nodo.clave(),
     hijos: {contenido: nodos}
   });
+};
+
+Demo.puedeTerminarAcá = function(tokens, i) {
+  tokens.sinLosPrimeros_(i).todosCumplen_(Demo.esOpcional);
+};
+
+Demo.esOpcional = function(nodo) {
+  return nodo.tipoNodo == "Opcional" || nodo.tipoNodo == "Estrella";
+};
+
+Demo.vieneUnSalto = function(nodo) {
+  return nodo.tipoNodo == "Salto" ||
+    (nodo.tipoNodo == "Opcional" && Demo.vieneUnSalto(nodo.nodo())) ||
+    (nodo.tipoNodo == "Estrella" && Demo.vieneUnSalto(nodo.nodo())) ||
+    (nodo.tipoNodo == "Pipe" && nodo.opciones().algunoCumple_(Demo.vieneUnSalto))
+  ;
 };
 
 const s = function(k) {
