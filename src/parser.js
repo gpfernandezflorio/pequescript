@@ -26,8 +26,8 @@ Mila.Tipo.Registrar({
   es: {
     "?tamañoDeTab":Mila.Tipo.Entero,
     "?finesDeLínea":Mila.Tipo.O([TipoSeparadorLínea, Mila.Tipo.ListaDe_(TipoSeparadorLínea)]),
-    "?agrupadores":Mila.Tipo.Registro, // las claves son TipoAgrupador o lista de TipoAgrupador
-    "?producciones":Mila.Tipo.Registro // las claves son ProduccionParserPeque o lista de ProduccionParserPeque
+    "?agrupadores":Mila.Tipo.Registro, // los valores son TipoAgrupador o lista de TipoAgrupador
+    "?producciones":Mila.Tipo.Registro // los valores son ProduccionParserPeque o lista de ProduccionParserPeque
   },
   inferible: false
 });
@@ -48,14 +48,120 @@ Mila.Tipo.Registrar({
   inferible: false
 });
 
+const configuracionesRapidas = {
+  finesDeLínea: {
+    salto:{ // cada salto es un fin de línea
+      tokens:Peque.Tokens.salto()
+    },
+    saltoSalvoQueIndente:{ // cada salto es un fin de línea pero si la línea de abajo
+      // está indentada entonces se toma como parte de la anterior
+      tokens:Peque.Tokens.salto(),
+      escape:[Peque.Tokens.salto(),Peque.Tokens.indentarMás()]
+    },
+    puntoYComa:{ // un punto y coma equivale a un salto de línea
+      tokens:Peque.Tokens.texto(";")
+    }
+  },
+  agrupadores: {
+    paréntesis:{ // encerrado entre paréntesis
+      abre:[Peque.Tokens.texto("(")],
+      cierra:[Peque.Tokens.texto(")")]
+    },
+    llaves:{ // encerrado entre llaves
+      abre:[Peque.Tokens.texto("{")],
+      cierra:[Peque.Tokens.texto("}")]
+    },
+    llavesConSalto:{ // encerrado entre paréntesis pero con un salto justo después de abrir
+      abre:[Peque.Tokens.texto("{"),Peque.Tokens.salto()],
+      cierra:[Peque.Tokens.texto("}")]
+    },
+    dosPuntosConIndentación:{ // abre con dos puntos y cierra cuando des-indenta
+      abre:function(tokens, i) {
+        if (Peque.Parser.coincideTokensDesde([
+          Peque.Tokens.texto(":"),
+          Peque.Tokens.salto(),
+          Peque.Tokens.indentarMás()
+        ], tokens, i)) {
+          let k = 3;
+          while (i+k < tokens.length && Peque.Parser.coincideToken(
+            Peque.Tokens.indentarMás(), tokens[i+k]
+          )) {
+            k++;
+          }
+          return {cantidad:k, aumentoIndentación:k-2};
+        }
+        return Mila.Nada;
+      },
+      cierra:function(apertura, tokens, i) {
+        let k=0;
+        while (
+          k<apertura.aumentoIndentación &&
+          i+k < tokens.length &&
+          Peque.Parser.coincideToken(Peque.Tokens.indentarMenos(), tokens[i+k])
+        ) {
+          k++;
+        }
+        return k < apertura.aumentoIndentación
+          ? Mila.Nada
+          : {cantidad:k, agregar:Peque.Tokens.salto()}
+        ;
+      }, cierraAlFinal:true
+    },
+    indentación: { // sólo indenta
+      abre:[Peque.Tokens.indentarMás()],
+      cierra:[Peque.Tokens.indentarMenos()]
+    }
+  }
+};
+
 Peque.Parser.atributosPorDefecto = {
   tamañoDeTab:2,
-  finesDeLínea:{
-    tokens:Peque.Tokens.salto(),
-    escape:[Peque.Tokens.salto(),Peque.Tokens.indentarMás]
-  },
+  finesDeLínea:[
+    configuracionesRapidas.finesDeLínea.saltoSalvoQueIndente,
+    configuracionesRapidas.finesDeLínea.puntoYComa
+  ],
   agrupadores:{},
   producciones:{}
+};
+
+Peque.Parser.nuevaConfiguración = function(atributos) {
+  Mila.Contrato({
+    Proposito: [
+      "Describir una nueva configuración de parser Pequescript a partir de los atributos dados",
+      Mila.Tipo.AtributosParserPeque
+    ],
+    Parametros: [
+      [atributos, Mila.Tipo.Registro] // claves de acceso rápido
+    ]
+  });
+  const nuevaConfiguracion = Peque.Parser.atributosPorDefecto.copia();
+  if (atributos.defineLaClavePropia_('tamañoDeTab')) {
+    nuevaConfiguracion.tamañoDeTab = atributos.tamañoDeTab;
+  }
+  if (atributos.defineLaClavePropia_('finesDeLínea')) {
+    let valor = atributos.finesDeLínea;
+    if (!valor.esUnaLista()) {
+      valor = [valor];
+    }
+    nuevaConfiguracion.finesDeLínea = valor.transformados(function (x) {
+      return x.esUnTexto() ? cconfiguracionesRapidas.finesDeLínea[x] : x;
+    });
+  }
+  if (atributos.defineLaClavePropia_('agrupadores')) {
+    for (let categoria of atributos.agrupadores.clavesDefinidas()) {
+      let valor = atributos.agrupadores[categoria];
+      if (!valor.esUnaLista()) {
+        valor = [valor];
+      }
+      nuevaConfiguracion.agrupadores[categoria] = valor.transformados(function (x) {
+        return x.esUnTexto() ? configuracionesRapidas.agrupadores[x] : x;
+      });
+    }
+  }
+  if (atributos.defineLaClavePropia_('producciones')) {
+    nuevaConfiguracion.producciones = atributos.producciones;
+  }
+  return nuevaConfiguracion;
 };
 
 Peque.Parser.nuevo = function(atributos=Peque.Parser.atributosPorDefecto) {
@@ -416,7 +522,7 @@ Peque.Parser._Parser.prototype._línea_AjustadaA_ = function(líneas, inicio, co
     let proximo = tokens[i];
     if (j >= línea.length) {
       if (Peque.Parser.vieneUnSalto(proximo)) {
-        if (líneas.length < resultado.i) {
+        if (líneas.length <= resultado.i) {
           return Mila.Nada;
         }
         línea = líneas[resultado.i];

@@ -18,12 +18,12 @@ const tg = Peque.Tokens.grupo;
 
 const P = function(tokens, nodo) {
   return Peque.Parser.Produccion.nueva({tokens, nodo});
-}
+};
 
 Mila.alIniciar(function() {
   Mila.Tipo.NodoAST.strInstancia = Demo.strNodo_;
 
-  Demo.parser = Peque.Parser.nuevo(Demo.configuracion);
+  Demo.parser = Peque.Parser.nuevo(Peque.Parser.nuevaConfiguración(Demo.configuración));
 
   Demo.textoInicial = "Procedimiento probar algo {\n  Si no ( no hay nada ) y pasa algo {\n    hacer una\n      cosa\n  } Si no {\n    hacer otra\n    cosa\n  }\n}\nProcedimiento otra cosa {\n  Repetir 3 {\n    no hacer nada\n  }\n}";
   // Demo.textoInicial = "Procedimiento probar algo :\n  Si no ( no hay nada ) y pasa algo :\n    hacer una\n      cosa\n  Si no :\n    hacer otra\n    cosa\nProcedimiento otra cosa :\n  Repetir 3 :\n    no hacer nada";
@@ -38,39 +38,19 @@ Mila.alIniciar(function() {
   Mila.Pantalla.nueva({elementos:[Demo.menuSuperior,Demo.escritorio]});
 });
 
-Demo.configuracion = {
+Demo.configuración = {
   tamañoDeTab: 2,
   finesDeLínea: [
-    {tokens:ts(),escape:[ts(),tiMas()]},
-    {tokens:tt(";")}
+    "saltoSalvoQueIndente",
+    "puntoYComa"
   ],
   agrupadores: {
     COMANDO: [
-      {abre:[tt("{"),ts()], cierra:[tt("}")]}
-      ,
-      {abre:function(tokens, i) {
-        if (Peque.Parser.coincideTokensDesde([tt(":"),ts(),tiMas()], tokens, i)) {
-          let k = 3;
-          while (i+k < tokens.length && Peque.Parser.coincideToken(tiMas(), tokens[i+k])) {
-            k++;
-          }
-          return {cantidad:k, aumentoIndentación:k-2};
-        }
-        return Mila.Nada;
-      }, cierra:function(apertura, tokens, i) {
-        let k=0;
-        while (
-          k<apertura.aumentoIndentación &&
-          i+k < tokens.length &&
-          Peque.Parser.coincideToken(tiMenos(), tokens[i+k])
-        ) {
-          k++;
-        }
-        return k < apertura.aumentoIndentación ? Mila.Nada : {cantidad:k, agregar:ts()}
-      }, cierraAlFinal:true}
+      "llavesConSalto",
+      "dosPuntosConIndentación"
     ],
-    EXPRESIÓN: [{abre:[tt("(")], cierra:[tt(")")]}],
-    IGNORAR: [{abre:[tiMas()], cierra:[tiMenos()]}],
+    EXPRESIÓN: "paréntesis",
+    IGNORAR: ["indentación"]
   },
   producciones: {
     EXPRESIÓN: [
