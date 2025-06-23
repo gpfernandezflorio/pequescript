@@ -469,11 +469,13 @@ Peque.Parser._Parser.prototype._recalcularIndentación = function(tokens, i, tok
     while (j < tokens.length && tokens[j].tipoNodo != "Salto") {
       j++;
     }
-    if (j < tokens.length &&
-      // A menos que siga una I-
-      (j == tokens.length-1 || tokens[j+1].tipoNodo != "Indentación-")
-    ) {
-      tokens.Insertar_EnPosicion_(Peque.Tokens.indentarMás(),j+2);
+    if (j < tokens.length) {
+      // Pero si sigue una I- se anulan
+      if (j < tokens.length-1 && tokens[j+1].tipoNodo == "Indentación-") {
+        tokens.SacarElementoEnPosicion_(j+2);
+      } else {
+        tokens.Insertar_EnPosicion_(Peque.Tokens.indentarMás(),j+2);
+      }
     }
   }
 };
