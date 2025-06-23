@@ -144,7 +144,7 @@ Peque.Parser.nuevaConfiguración = function(atributos) {
       valor = [valor];
     }
     nuevaConfiguracion.finesDeLínea = valor.transformados(function (x) {
-      return x.esUnTexto() ? cconfiguracionesRapidas.finesDeLínea[x] : x;
+      return x.esUnTexto() ? configuracionesRapidas.finesDeLínea[x] : x;
     });
   }
   if (atributos.defineLaClavePropia_('agrupadores')) {
@@ -287,40 +287,12 @@ Peque.Parser._Parser.prototype._AgruparTokens = function() {
   let grupos = [];
   let i=0;
   while (i < tokensAnteriores.length) {
-    let proximosTokens = [];
     let grupo = Peque.Parser.grupoQueInicia(tokensAnteriores, i, this.iniciadores);
     if (grupo.esAlgo()) {
       grupos.push(grupo);
       i+=grupo.abre.cantidad;
     } else {
-      if (grupos.length > 0) {
-        let clausura = Peque.Parser.cierraGrupo(tokensAnteriores, i, grupos.ultimo());
-        if (clausura.esAlgo()) {
-          let grupo = grupos.ultimo();
-          grupos.SacarUltimo();
-          grupo.clausura = tokensAnteriores.subListaEntre_Y_(i+1, i+clausura.cantidad);
-          if (grupo.claveAgrupador == "IGNORAR") {
-            proximosTokens = Peque.Parser.contenidoGrupoIgnorado(grupo);
-          } else {
-            proximosTokens.push(Peque.Tokens.grupo(grupo.claveAgrupador, grupo.contenido));
-          }
-          if ('agregar' in clausura) {
-            for (let nodo of (clausura.agregar.esUnaLista() ? clausura.agregar : [clausura.agregar])) {
-              proximosTokens.push(nodo);
-            }
-          }
-          i+=clausura.cantidad;
-        } else {
-          proximosTokens.push(tokensAnteriores[i]);
-          i++;
-        }
-      } else {
-        proximosTokens.push(tokensAnteriores[i]);
-        i++;
-      }
-    }
-    for (let token of proximosTokens) {
-      (grupos.length > 0 ? grupos.ultimo().contenido : todosLosTokens).push(token);
+      i = this._ProcesarToken(tokensAnteriores, i, grupos, todosLosTokens);
     }
   }
   while (!grupos.esVacia() && grupos.ultimo().cierraAlFinal) {
@@ -335,6 +307,48 @@ Peque.Parser._Parser.prototype._AgruparTokens = function() {
     return;
   }
   this.estado.ActualizarCadena_(todosLosTokens);
+};
+
+Peque.Parser._Parser.prototype._ProcesarToken = function(tokensAnteriores, i, grupos, todosLosTokens) {
+  let reProcesar = false;
+  let proximosTokens = [];
+  if (grupos.length > 0) {
+    let clausura = Peque.Parser.cierraGrupo(tokensAnteriores, i, grupos.ultimo());
+    if (clausura.esAlgo()) {
+      let grupo = grupos.ultimo();
+      grupos.SacarUltimo();
+      grupo.clausura = tokensAnteriores.subListaEntre_Y_(i+1, i+clausura.cantidad);
+      if (grupo.claveAgrupador == "IGNORAR") {
+        proximosTokens = Peque.Parser.contenidoGrupoIgnorado(grupo);
+        reProcesar = grupos.length > 0;
+      } else {
+        proximosTokens.push(Peque.Tokens.grupo(grupo.claveAgrupador, grupo.contenido));
+      }
+      if ('agregar' in clausura) {
+        for (let nodo of (clausura.agregar.esUnaLista() ? clausura.agregar : [clausura.agregar])) {
+          proximosTokens.push(nodo);
+        }
+      }
+      i+=clausura.cantidad;
+    } else {
+      proximosTokens.push(tokensAnteriores[i]);
+      i++;
+    }
+  } else {
+    proximosTokens.push(tokensAnteriores[i]);
+    i++;
+  }
+  if (reProcesar) {
+    let j = 0;
+    while (j < proximosTokens.length) {
+      j = this._ProcesarToken(proximosTokens, j, grupos, todosLosTokens);
+    }
+  } else {
+    for (let token of proximosTokens) {
+      (grupos.length > 0 ? grupos.ultimo().contenido : todosLosTokens).push(token);
+    }
+  }
+  return i;
 };
 
 Peque.Parser._Parser.prototype._ParsearTokens = function() {
@@ -421,6 +435,8 @@ Peque.Parser._Parser.prototype._tokensLimpios = function(tokens) {
     } else {
       let tokensAIgnorar = this._tokensIgnorables(tokens, i);
       if (tokensAIgnorar > 0) {
+        // Ojo: si se ignora un I+ hay que recalcular la indentación del próximo salto
+        this._recalcularIndentación(tokens, i, tokensAIgnorar);
         i+=tokensAIgnorar;
       } else {
         if (token.tipoNodo != "Indentación+" && token.tipoNodo != "Indentación-") {
@@ -443,6 +459,23 @@ Peque.Parser._Parser.prototype._tokensIgnorables = function(tokens, i) {
     }
   }
   return 0;
+};
+
+Peque.Parser._Parser.prototype._recalcularIndentación = function(tokens, i, tokensAIgnorar) {
+  let tokensQueSeIgnoran = tokens.subListaEntre_Y_(i+1, i+tokensAIgnorar);
+  let nuevaIndentación = tokensQueSeIgnoran.cantidadQueCumple_(x => x.tipoNodo != "Indentación+");
+  if (nuevaIndentación > 0) { // Hay que agregarlos al próximo salto
+    let j = i+tokensAIgnorar;
+    while (j < tokens.length && tokens[j].tipoNodo != "Salto") {
+      j++;
+    }
+    if (j < tokens.length &&
+      // A menos que siga una I-
+      (j == tokens.length-1 || tokens[j+1].tipoNodo != "Indentación-")
+    ) {
+      tokens.Insertar_EnPosicion_(Peque.Tokens.indentarMás(),j+2);
+    }
+  }
 };
 
 Peque.Parser.coincideToken = function(token1, token2) {

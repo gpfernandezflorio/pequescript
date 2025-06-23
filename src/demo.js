@@ -25,7 +25,7 @@ Mila.alIniciar(function() {
 
   Demo.parser = Peque.Parser.nuevo(Peque.Parser.nuevaConfiguración(Demo.configuración));
 
-  Demo.textoInicial = "Procedimiento probar algo {\n  Si no ( no hay nada ) y pasa algo {\n    hacer una\n      cosa\n  } Si no {\n    hacer otra\n    cosa\n  }\n}\nProcedimiento otra cosa {\n  Repetir 3 {\n    no hacer nada\n  }\n}";
+  Demo.textoInicial = "Procedimiento probar algo {\n  Si no ( no hay nada ) y pasa algo {\n    hacer una\n      cosa\n      maravillosa\n  } Si no {\n    hacer otra\n    cosa\n  }\n}\nProcedimiento otra cosa {\n  Repetir 3 {\n    no hacer ( nada\n    de nada )\n  }\n}";
   // Demo.textoInicial = "Procedimiento probar algo :\n  Si no ( no hay nada ) y pasa algo :\n    hacer una\n      cosa\n  Si no :\n    hacer otra\n    cosa\nProcedimiento otra cosa :\n  Repetir 3 :\n    no hacer nada";
 
   Demo.areaTexto = Mila.Pantalla.nuevaAreaTexto({texto:Demo.textoInicial});
