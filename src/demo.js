@@ -63,6 +63,12 @@ Demo.configuración = {
           campos: {valor:tokens[0].n()}
         });
       }),
+      P(o([tt("cierto"),tt("falso")]),function(tokens) {
+        return Mila.AST.nuevoNodo({
+          tipoNodo: "LiteralBooleano",
+          campos: {valor:tokens[0].texto()}
+        });
+      }),
       P([tv("EXPRESIÓN"),tt("y"),tv("EXPRESIÓN")],function(tokens) {
         return Mila.AST.nuevoNodo({
           tipoNodo: "OperaciónBinariaLógica",
@@ -75,6 +81,33 @@ Demo.configuración = {
           tipoNodo: "OperaciónBinariaLógica",
           campos: {clase:"Disyunción"},
           hijos: {izquierdo:tokens[0],derecho:tokens[2]}
+        });
+      }),
+      P([tv("EXPRESIÓN"),o([
+        tt("+"),
+        tt("-"),
+        tt("."),
+        tt("%"),
+        tt("^")
+      ]),tv("EXPRESIÓN")],function(tokens) {
+        return Mila.AST.nuevoNodo({
+          tipoNodo: "OperaciónBinariaAritmética",
+          campos: {clase:tokens[1].texto()},
+          hijos: {izquierdo:tokens[0],derecho:tokens[2]}
+        });
+      }),
+      P([tt("es"),tv("EXPRESIÓN"),o([
+        tt("mayor"),
+        tt("menor"),
+        tt(">="),
+        tt("<="),
+        tt("igual"),
+        tt("distinto")
+      ]),tt("a"),tv("EXPRESIÓN")],function(tokens) {
+        return Mila.AST.nuevoNodo({
+          tipoNodo: "OperaciónBinariaComparación",
+          campos: {clase:tokens[2].texto()},
+          hijos: {izquierdo:tokens[1],derecho:tokens[4]}
         });
       }),
       P([tt("no"),tv("EXPRESIÓN")],function(tokens) {
@@ -184,10 +217,16 @@ Demo.strNodo_ = function(nodo) {
       return `\n${s(nodo.nivel)}Negación${Demo.strNodo_(nodo.operando())}`;
     case "OperaciónBinariaLógica":
       return `\n${s(nodo.nivel)}${nodo.clase()}${Demo.strNodo_(nodo.izquierdo())}${Demo.strNodo_(nodo.derecho())}`;
+    case "OperaciónBinariaAritmética":
+      return `\n${s(nodo.nivel)}${nodo.clase()}${Demo.strNodo_(nodo.izquierdo())}${Demo.strNodo_(nodo.derecho())}`;
+    case "OperaciónBinariaComparación":
+      return `\n${s(nodo.nivel)}${nodo.clase()}${Demo.strNodo_(nodo.izquierdo())}${Demo.strNodo_(nodo.derecho())}`;
     case "Identificador":
       return `\n${s(nodo.nivel)}${nodo.identificador()}`;
     case "LiteralNúmero":
       return `\n${s(nodo.nivel)}Número ${nodo.valor()}`;
+    case "LiteralBooleano":
+      return `\n${s(nodo.nivel)}Booleano ${nodo.valor()}`;
   }
   return "";
 };
