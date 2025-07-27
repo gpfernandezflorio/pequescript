@@ -363,6 +363,9 @@ Peque.Parser._Parser.prototype._ParsearTokens = function() {
 };
 
 Peque.Parser._Parser.prototype._AgregarNodos = function(nodos, líneas, i, contexto) {
+  if (líneas[i].esVacia()) {
+    return i+1;
+  }
   if (contexto in this.producciones) {
     for (let construccion of this.producciones[contexto]) {
       let líneaAjustada = this._línea_AjustadaA_(líneas, i, construccion);
