@@ -5,19 +5,16 @@ Mila.Modulo({
 });
 
 const tt = Peque.Tokens.texto;
-const ts = Peque.Tokens.salto;
-const tiMas = Peque.Tokens.indentarMás;
-const tiMenos = Peque.Tokens.indentarMenos;
-const tid = Peque.Tokens.tokenIdentificador;
+const ts = Peque.Tokens.salto();
+const tiMas = Peque.Tokens.indentarMás();
+const tiMenos = Peque.Tokens.indentarMenos();
+const tid = Peque.Tokens.tokenIdentificador();
 
 const o = Peque.Tokens.disyunción;
 const opt = Peque.Tokens.opcional;
 const rep = Peque.Tokens.kleene;
-const sec = Peque.Tokens.secuencia;
 const tg = Peque.Tokens.agrupado;
 const rec = Peque.Tokens.recursivo;
-
-const nID = Peque.Tokens.nodoIdentificador;
 
 const P = function(tokens, nodo) {
   return Peque.Parser.Produccion.nueva({tokens, nodo});
@@ -114,7 +111,7 @@ Demo.configuración = {
           hijos: {operando:tokens[1]}
         });
       }),
-      P(tid(),function(tokens) {
+      P(tid,function(tokens) {
         let n = Number.parseFloat(tokens[0].identificador());
         return isNaN(n) ? tokens[0] : Mila.AST.nuevoNodo({
           tipoNodo: "LiteralNúmero",
@@ -123,10 +120,11 @@ Demo.configuración = {
       })
     ],
     COMANDO: [
-      P([tt("Si"),rec("EXPRESIÓN"),tg("COMANDO"),opt(ts()),tt("Si"),tt("no"),tg("COMANDO")],function(tokens) {
+      P([tt("Si"),rec("EXPRESIÓN"),tg("COMANDO"),opt(ts),tt("Si"),tt("no"),tg("COMANDO")],function(tokens) {
+        let iRamaNegativa = tokens.length-1;
         return Mila.AST.nuevoNodo({
           tipoNodo: "AlternativaCondicionalCompuesta",
-          hijos: {condición:tokens[1], ramaPositiva:tokens[2].contenido(), ramaNegativa:tokens[5].contenido()}
+          hijos: {condición:tokens[1], ramaPositiva:tokens[2].contenido(), ramaNegativa:tokens[iRamaNegativa].contenido()}
         });
       }),
       P([tt("Si"),rec("EXPRESIÓN"),tg("COMANDO")],function(tokens) {
@@ -148,12 +146,12 @@ Demo.configuración = {
           hijos: {condición:tokens[1], cuerpo:tokens[2].contenido()}
         });
       }),
-      P(tid(),function(tokens) {
+      P(tid,function(tokens) {
         return tokens[0];
       })
     ],
     DEFINICION: [
-      P([tt("Procedimiento"),tid(),tg("COMANDO")],function(tokens) {
+      P([tt("Procedimiento"),tid,tg("COMANDO")],function(tokens) {
         return Mila.AST.nuevoNodo({
           tipoNodo: "DefiniciónProcedimiento",
           hijos: {nombre:tokens[1], cuerpo:tokens[2].contenido()}

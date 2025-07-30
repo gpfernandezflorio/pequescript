@@ -5,14 +5,14 @@ Mila.Modulo({
 });
 
 const tt = Peque.Tokens.texto;
-const ts = Peque.Tokens.salto;
-const tiMas = Peque.Tokens.indentarMás;
-const tiMenos = Peque.Tokens.indentarMenos;
+const ts = Peque.Tokens.salto();
+const tiMas = Peque.Tokens.indentarMás();
+const tiMenos = Peque.Tokens.indentarMenos();
 
 const nT = function(texto) { return Peque.Tokens.atómico(tt(texto)); }
-const nS = function() { return Peque.Tokens.atómico(ts()); }
-const nIMas = function() { return Peque.Tokens.atómico(tiMas()); }
-const nIMenos = function() { return Peque.Tokens.atómico(tiMenos()); }
+const nS = function() { return Peque.Tokens.atómico(ts); }
+const nIMas = function() { return Peque.Tokens.atómico(tiMas); }
+const nIMenos = function() { return Peque.Tokens.atómico(tiMenos); }
 
 const nG = Peque.Tokens.grupo;
 const nID = Peque.Tokens.nodoIdentificador;
@@ -64,12 +64,12 @@ Mila.Tipo.Registrar({
 const configuracionesRapidas = {
   finesDeLínea: {
     salto:{ // cada salto es un fin de línea
-      tokens:ts()
+      tokens:ts
     },
     saltoSalvoQueIndente:{ // cada salto es un fin de línea pero si la línea de abajo
       // está indentada entonces se toma como parte de la anterior
-      tokens:ts(),
-      escape:[ts(),tiMas()]
+      tokens:ts,
+      escape:[ts,tiMas]
     },
     puntoYComa:{ // un punto y coma equivale a un salto de línea
       tokens:tt(";")
@@ -85,20 +85,20 @@ const configuracionesRapidas = {
       cierra:[tt("}")]
     },
     llavesConSalto:{ // encerrado entre paréntesis pero con un salto justo después de abrir
-      abre:[tt("{"),ts()],
+      abre:[tt("{"),ts],
       cierra:[tt("}")]
     },
     dosPuntosConIndentación:{ // abre con dos puntos y cierra cuando des-indenta
       abre:function(tokens, i) {
         if (Peque.Parser.coincideTokensDesde([
           tt(":"),
-          ts(),
-          tiMas()
+          ts,
+          tiMas
         ], tokens, i)) {
           let k = 3;
           while (
             i+k < tokens.length &&
-            Peque.Parser.coincideToken_Con_(tiMas(), tokens[i+k])
+            Peque.Parser.coincideToken_Con_(tiMas, tokens[i+k])
           ) {
             k++;
           }
@@ -111,19 +111,19 @@ const configuracionesRapidas = {
         while (
           k<apertura.aumentoIndentación &&
           i+k < tokens.length &&
-          Peque.Parser.coincideToken_Con_(tiMenos(), tokens[i+k])
+          Peque.Parser.coincideToken_Con_(tiMenos, tokens[i+k])
         ) {
           k++;
         }
         return k < apertura.aumentoIndentación
           ? Mila.Nada
-          : {cantidad:k, agregar:ts()}
+          : {cantidad:k, agregar:ts}
         ;
       }, cierraAlFinal:true
     },
     indentación: { // sólo indenta
-      abre:[tiMas()],
-      cierra:[tiMenos()]
+      abre:[tiMas],
+      cierra:[tiMenos]
     }
   }
 };
@@ -645,17 +645,14 @@ Peque.Parser._Parser.prototype.intentoDeAjustarLínea_A_ = function(línea, j, p
           : Mila.Nada
         ;
       case "Recursivo":
-        nuevaJ = this.AcumularNodosDe_En_HastaColisionar(línea, nodos, siguientes, nuevaJ);
-        if (siguientes.esVacia() || nuevaJ < línea.length) {
-          return {i:1, j:nuevaJ, n:[this._recursión(nodos, proximo.contenido)]}
-        } else {
-          return {i:1, j:nuevaJ, n:[]};
-        }
+        return this._resultadoAcumuladoDeAjusteDeLínea(línea, nodos, siguientes, nuevaJ, this._recursión(proximo.contenido));
       case "Identificador":
-        nuevaJ = this.AcumularNodosDe_En_HastaColisionar(línea, nodos, siguientes, nuevaJ);
-        return {i:1, j:nuevaJ, n:[nID(nodos)]};
+        return this._resultadoAcumuladoDeAjusteDeLínea(línea, nodos, siguientes, nuevaJ, nID);
       default:
-        return Peque.Parser.coincideToken_Con_(proximo, línea[j]) ? {i:1, j:j+1, n:[línea[j]]} : Mila.Nada;
+        return (j < línea.length && Peque.Parser.coincideToken_Con_(proximo, línea[j]))
+          ? {i:1, j:j+1, n:[línea[j]]}
+          : Mila.Nada
+        ;
     }
   }
   switch (proximo.clase) {
@@ -692,7 +689,7 @@ Peque.Parser._Parser.prototype.intentoDeAjustarLínea_A_ = function(línea, j, p
   }
 };
 
-Peque.Parser._Parser.prototype.AcumularNodosDe_En_HastaColisionar = function(línea, nodos, siguientes, j) {
+Peque.Parser._Parser.prototype._resultadoAcumuladoDeAjusteDeLínea = function(línea, nodos, siguientes, j, f) {
   let nuevaJ = j;
   while (nuevaJ < línea.length &&
     !Peque.Parser.token_ColisionaCon_(línea[nuevaJ], siguientes)
@@ -700,7 +697,18 @@ Peque.Parser._Parser.prototype.AcumularNodosDe_En_HastaColisionar = function(lí
     nodos.push(línea[nuevaJ]);
     nuevaJ++;
   }
-  return nuevaJ;
+  // TODO: Revisar si tiene sentido ya invocar a 'f'. Podría pasar que hasta ahora venga bien pero se rompa más adelante.
+  /* Ej:
+    P1: DEFINICIÓN -> EXPRESIÓN a EXPRESIÓN b EXPRESIÓN
+    P2: DEFINICIÓN -> EXPRESIÓN o a
+      con la cadena "5 o a" va a entrar por la primera y hacer el llamado recursivo con "5 o"
+        pero no vale la pena hacerlo porque nunca va a encontrar 'b'.
+  */
+  return {i:1, j:nuevaJ, n: (
+    (Peque.Parser.puedeTerminarAcá(siguientes) || nuevaJ < línea.length)
+    ? [f(nodos)]
+    : []
+  )};
 };
 
 Peque.Parser.token_ColisionaCon_ = function(token, siguientes) {
@@ -727,11 +735,14 @@ Peque.Parser.token_ColisionaCon_ = function(token, siguientes) {
   return Peque.Parser.coincideToken_Con_(modelo, token);
 };
 
-Peque.Parser._Parser.prototype._recursión = function(línea, clase) {
-  const nodos = [];
-  this._AgregarLíneas_ANodos_EnContexto_([línea], nodos, clase);
-  if (nodos.length != 1) { debugger; }
-  return nodos[0];
+Peque.Parser._Parser.prototype._recursión = function(clase) {
+  const esteParser = this;
+  return function(línea) {
+    const nodos = [];
+    esteParser._AgregarLíneas_ANodos_EnContexto_([línea], nodos, clase);
+    if (nodos.length != 1) { debugger; }
+    return nodos[0];
+  };
 };
 
 Peque.Parser._Parser.prototype._nodoGrupo = function(nodo) {
@@ -744,7 +755,7 @@ Peque.Parser._Parser.prototype._nodoGrupo = function(nodo) {
   return nG(nodo.clase(), nodos);
 };
 
-Peque.Parser.puedeTerminarAcá = function(tokens, i) {
+Peque.Parser.puedeTerminarAcá = function(tokens, i=0) {
   return tokens.sinLosPrimeros_(i).todosCumplen_(Peque.Parser.esOpcional);
 };
 

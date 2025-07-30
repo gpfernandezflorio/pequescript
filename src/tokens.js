@@ -25,9 +25,13 @@ Peque.Tokens.indentarMenos = function() { // Token indentar -
 // Temporales
 
 Peque.Tokens.atómico = function(token, textoOriginal=Mila.Nada) { // Token atómico: un token elemental
+  const campos = {token};
+  if (token.clase == "Texto") {
+    campos.texto = token.contenido;
+  }
   return Mila.AST.nuevoNodo({
     tipoNodo: "Atómico",
-    campos: {token},
+    campos,
     textoOriginal: textoOriginal.esNada() ? token.contenido : textoOriginal
   });
 };
