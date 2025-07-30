@@ -4,6 +4,19 @@ Mila.Modulo({
   usa:["estado","produccion"]
 });
 
+const tt = Peque.Tokens.texto;
+const ts = Peque.Tokens.salto;
+const tiMas = Peque.Tokens.indentarMás;
+const tiMenos = Peque.Tokens.indentarMenos;
+
+const nT = function(texto) { return Peque.Tokens.atómico(tt(texto)); }
+const nS = function() { return Peque.Tokens.atómico(ts()); }
+const nIMas = function() { return Peque.Tokens.atómico(tiMas()); }
+const nIMenos = function() { return Peque.Tokens.atómico(tiMenos()); }
+
+const nG = Peque.Tokens.grupo;
+const nID = Peque.Tokens.nodoIdentificador;
+
 const TipoToken = Mila.Tipo.O([Mila.Tipo.NodoAST,Mila.Tipo.ListaDe_(Mila.Tipo.NodoAST)]);
 const TipoSeparadorLínea = Mila.Tipo.RegistroCon_({
   "?id":Mila.Tipo.Texto,
@@ -51,41 +64,42 @@ Mila.Tipo.Registrar({
 const configuracionesRapidas = {
   finesDeLínea: {
     salto:{ // cada salto es un fin de línea
-      tokens:Peque.Tokens.salto()
+      tokens:ts()
     },
     saltoSalvoQueIndente:{ // cada salto es un fin de línea pero si la línea de abajo
       // está indentada entonces se toma como parte de la anterior
-      tokens:Peque.Tokens.salto(),
-      escape:[Peque.Tokens.salto(),Peque.Tokens.indentarMás()]
+      tokens:ts(),
+      escape:[ts(),tiMas()]
     },
     puntoYComa:{ // un punto y coma equivale a un salto de línea
-      tokens:Peque.Tokens.texto(";")
+      tokens:tt(";")
     }
   },
   agrupadores: {
     paréntesis:{ // encerrado entre paréntesis
-      abre:[Peque.Tokens.texto("(")],
-      cierra:[Peque.Tokens.texto(")")]
+      abre:[tt("(")],
+      cierra:[tt(")")]
     },
     llaves:{ // encerrado entre llaves
-      abre:[Peque.Tokens.texto("{")],
-      cierra:[Peque.Tokens.texto("}")]
+      abre:[tt("{")],
+      cierra:[tt("}")]
     },
     llavesConSalto:{ // encerrado entre paréntesis pero con un salto justo después de abrir
-      abre:[Peque.Tokens.texto("{"),Peque.Tokens.salto()],
-      cierra:[Peque.Tokens.texto("}")]
+      abre:[tt("{"),ts()],
+      cierra:[tt("}")]
     },
     dosPuntosConIndentación:{ // abre con dos puntos y cierra cuando des-indenta
       abre:function(tokens, i) {
         if (Peque.Parser.coincideTokensDesde([
-          Peque.Tokens.texto(":"),
-          Peque.Tokens.salto(),
-          Peque.Tokens.indentarMás()
+          tt(":"),
+          ts(),
+          tiMas()
         ], tokens, i)) {
           let k = 3;
-          while (i+k < tokens.length && Peque.Parser.coincideToken(
-            Peque.Tokens.indentarMás(), tokens[i+k]
-          )) {
+          while (
+            i+k < tokens.length &&
+            Peque.Parser.coincideToken_Con_(tiMas(), tokens[i+k])
+          ) {
             k++;
           }
           return {cantidad:k, aumentoIndentación:k-2};
@@ -97,19 +111,19 @@ const configuracionesRapidas = {
         while (
           k<apertura.aumentoIndentación &&
           i+k < tokens.length &&
-          Peque.Parser.coincideToken(Peque.Tokens.indentarMenos(), tokens[i+k])
+          Peque.Parser.coincideToken_Con_(tiMenos(), tokens[i+k])
         ) {
           k++;
         }
         return k < apertura.aumentoIndentación
           ? Mila.Nada
-          : {cantidad:k, agregar:Peque.Tokens.salto()}
+          : {cantidad:k, agregar:ts()}
         ;
       }, cierraAlFinal:true
     },
     indentación: { // sólo indenta
-      abre:[Peque.Tokens.indentarMás()],
-      cierra:[Peque.Tokens.indentarMenos()]
+      abre:[tiMas()],
+      cierra:[tiMenos()]
     }
   }
 };
@@ -245,15 +259,15 @@ Peque.Parser._Parser.prototype._AgregarTokensEntreLíneas = function() {
   let todosLosTokens = [primerToken];
   let indentaciónAnterior = primerToken.indentación();
   for (let token of tokensLínea.sinElPrimero()) {
-    todosLosTokens.push(Peque.Tokens.salto());
+    todosLosTokens.push(nS());
     let nuevaIndentación = token.indentación();
     if (nuevaIndentación > indentaciónAnterior) {
       for (let i=0; i<nuevaIndentación-indentaciónAnterior; i++) {
-        todosLosTokens.push(Peque.Tokens.indentarMás());
+        todosLosTokens.push(nIMas());
       }
     } else if (nuevaIndentación < indentaciónAnterior) {
       for (let i=0; i<indentaciónAnterior-nuevaIndentación; i++) {
-        todosLosTokens.push(Peque.Tokens.indentarMenos());
+        todosLosTokens.push(nIMenos());
       }
     }
     todosLosTokens.push(token);
@@ -275,10 +289,9 @@ Peque.Parser._Parser.prototype._TokenizarLíneas = function() {
 };
 
 Peque.Parser._Parser.prototype._TokenizarTokenLínea_ = function(tokenLínea) {
+  // TODO: guardar los espacios descartados por el trim y por el split en el campo 'textoOriginal' para poder recuperarlo
   let texto = tokenLínea.texto().trim();
-  return texto.split(" ").transformados(texto =>
-    Number.isNaN(Number.parseFloat(texto)) ? Peque.Tokens.texto(texto) : Peque.Tokens.número(Number.parseFloat(texto))
-  );
+  return texto.split(" ").transformados(nT);
 };
 
 Peque.Parser._Parser.prototype._AgruparTokens = function() {
@@ -299,7 +312,7 @@ Peque.Parser._Parser.prototype._AgruparTokens = function() {
     let grupo = grupos.ultimo();
     grupos.SacarUltimo();
     (grupos.length > 0 ? grupos.ultimo().contenido : todosLosTokens)
-      .push(Peque.Tokens.grupo(grupo.claveAgrupador, grupo.contenido))
+      .push(nG(grupo.claveAgrupador, grupo.contenido))
     ;
   }
   if (!grupos.esVacia()) {
@@ -322,7 +335,7 @@ Peque.Parser._Parser.prototype._ProcesarToken = function(tokensAnteriores, i, gr
         proximosTokens = Peque.Parser.contenidoGrupoIgnorado(grupo);
         reProcesar = grupos.length > 0;
       } else {
-        proximosTokens.push(Peque.Tokens.grupo(grupo.claveAgrupador, grupo.contenido));
+        proximosTokens.push(nG(grupo.claveAgrupador, grupo.contenido));
       }
       if ('agregar' in clausura) {
         for (let nodo of (clausura.agregar.esUnaLista() ? clausura.agregar : [clausura.agregar])) {
@@ -357,12 +370,12 @@ Peque.Parser._Parser.prototype._ParsearTokens = function() {
   const nodos = [];
   let i=0;
   while (i.esAlgo() && i<líneas.length) {
-    i = this._AgregarNodos(nodos, líneas, i, "DEFINICION");
+    i = this._AgregarLíneas_ANodos_EnContexto_(líneas, nodos, "DEFINICION", i);
   }
   this.estado.ActualizarCadena_(nodos);
 };
 
-Peque.Parser._Parser.prototype._AgregarNodos = function(nodos, líneas, i, contexto) {
+Peque.Parser._Parser.prototype._AgregarLíneas_ANodos_EnContexto_ = function(líneas, nodos, contexto, i=0) {
   if (líneas[i].esVacia()) {
     return i+1;
   }
@@ -370,7 +383,7 @@ Peque.Parser._Parser.prototype._AgregarNodos = function(nodos, líneas, i, conte
     for (let construccion of this.producciones[contexto]) {
       let líneaAjustada = this._línea_AjustadaA_(líneas, i, construccion);
       if (líneaAjustada.esAlgo()) {
-        nodos.push(construccion.nodo(líneaAjustada.línea));
+        nodos.push(construccion.nodo(líneaAjustada.línea, líneaAjustada.textoOriginal));
         return líneaAjustada.i;
       }
     }
@@ -433,7 +446,7 @@ Peque.Parser._Parser.prototype._tokensLimpios = function(tokens) {
       token.CambiarHijo_A_('contenido', this._tokensLimpios(token.contenido()));
       tokensLimpios.push(token);
       i++;
-    } else if (token.tipoNodo == "Texto" && token.texto().length == 0) {
+    } else if (Peque.Parser.esTextoVacío(token)) { // TODO: conservar estos espacios en blanco en el campo textoOriginal
       i++;
     } else {
       let tokensAIgnorar = this._tokensIgnorables(tokens, i);
@@ -442,7 +455,7 @@ Peque.Parser._Parser.prototype._tokensLimpios = function(tokens) {
         this._recalcularIndentación(tokens, i, tokensAIgnorar);
         i+=tokensAIgnorar;
       } else {
-        if (token.tipoNodo != "Indentación+" && token.tipoNodo != "Indentación-") {
+        if (!Peque.Parser.esIndentación(token)) {
           tokensLimpios.push(token);
         }
         i++;
@@ -450,6 +463,30 @@ Peque.Parser._Parser.prototype._tokensLimpios = function(tokens) {
     }
   }
   return tokensLimpios;
+};
+
+Peque.Parser.esTokenAtómico = function(nodo) {
+  return nodo.tipoNodo == "Atómico";
+};
+
+Peque.Parser.esTextoVacío = function(nodo) {
+  return Peque.Parser.esTokenAtómico(nodo) && nodo.token().clase == "Texto" && nodo.token().contenido.length == 0;
+};
+
+Peque.Parser.esSalto = function(nodo) {
+  return Peque.Parser.esTokenAtómico(nodo) && nodo.token().clase == "Salto";
+};
+
+Peque.Parser.esIndentación = function(nodo) {
+  return Peque.Parser.esTokenAtómico(nodo) && (nodo.token().clase == "Indentación+" || nodo.token().clase == "Indentación-");
+};
+
+Peque.Parser.esIndentaciónMás = function(nodo) {
+  return Peque.Parser.esTokenAtómico(nodo) && nodo.token().clase == "Indentación+";
+};
+
+Peque.Parser.esIndentaciónMenos = function(nodo) {
+  return Peque.Parser.esTokenAtómico(nodo) && nodo.token().clase == "Indentación-";
 };
 
 Peque.Parser._Parser.prototype._tokensIgnorables = function(tokens, i) {
@@ -466,52 +503,56 @@ Peque.Parser._Parser.prototype._tokensIgnorables = function(tokens, i) {
 
 Peque.Parser._Parser.prototype._recalcularIndentación = function(tokens, i, tokensAIgnorar) {
   let tokensQueSeIgnoran = tokens.subListaEntre_Y_(i+1, i+tokensAIgnorar);
-  let nuevaIndentación = tokensQueSeIgnoran.cantidadQueCumple_(x => x.tipoNodo != "Indentación+");
+  let nuevaIndentación = tokensQueSeIgnoran.cantidadQueNoCumple_(Peque.Parser.esIndentaciónMás);
   if (nuevaIndentación > 0) { // Hay que agregarlos al próximo salto
     let j = i+tokensAIgnorar;
-    while (j < tokens.length && tokens[j].tipoNodo != "Salto") {
+    while (j < tokens.length && !Peque.Parser.esSalto(tokens[j])) {
       j++;
     }
     if (j < tokens.length) {
       // Pero si sigue una I- se anulan
-      if (j < tokens.length-1 && tokens[j+1].tipoNodo == "Indentación-") {
+      if (j < tokens.length-1 && Peque.Parser.esIndentaciónMenos(tokens[j+1])) {
         tokens.SacarElementoEnPosicion_(j+2);
       } else {
-        tokens.Insertar_EnPosicion_(Peque.Tokens.indentarMás(),j+2);
+        tokens.Insertar_EnPosicion_(nIMas(),j+2);
       }
     }
   }
 };
 
-Peque.Parser.coincideToken = function(token1, token2) {
-  if (token1.tipoNodo == token2.tipoNodo) {
-    switch (token1.tipoNodo) {
-      case "Texto":
-        return token1.texto() == token2.texto();
-      case "Grupo":
-        return token1.clave() == token2.clave();
-      case "Varios":
-        return token1.clave() == token2.clave();
-    }
-    return true;
-  }
-  switch (token1.tipoNodo) {
-    case "Pipe":
-      return token1.opciones().algunoCumple_(t => Peque.Parser.coincideToken(t, token2));
-    case "Opcional":
-      return Peque.Parser.coincideToken(token1.nodo, token2);
-    case "Estrella":
-      return Peque.Parser.coincideToken(token1.nodo, token2);
-  }
-  return false;
+Peque.Parser.coincideToken_Con_ = function(tokenModelo, tokenEntrada) {
+  Mila.Contrato({
+    Proposito:["Indica si los dos tokens dados coinciden.", Mila.Tipo.Booleano],
+    Parametros:[
+      [tokenModelo, Mila.Tipo.Token],
+      [tokenEntrada, Mila.Tipo.NodoAST]
+    ]
+  });
+  return (
+    tokenModelo.clase == "Grupo" &&
+    tokenEntrada.tipoNodo == "Grupo" &&
+    tokenModelo.contenido == tokenEntrada.clase()
+  ) || (
+    Peque.Parser.esTokenAtómico(tokenEntrada) &&
+    tokenModelo.clase == tokenEntrada.token().clase &&
+    (tokenModelo.clase != "Texto" || tokenModelo.contenido == tokenEntrada.token().contenido)
+  );
 };
 
-Peque.Parser.coincideTokensDesde = function(tokens1, tokens2, desde) {
+Peque.Parser.coincideTokensDesde = function(tokensModelo, tokensEntrada, desde=0) {
+  Mila.Contrato({
+    Proposito:["Indica si los tokens en la primera lista dada coinciden con los de la segunda a partir del índice dado.", Mila.Tipo.Booleano],
+    Parametros:[
+      [tokensModelo, Mila.Tipo.ListaDe_(Mila.Tipo.Token)],
+      [tokensEntrada, Mila.Tipo.ListaDe_(Mila.Tipo.NodoAST)],
+      [desde, Mila.Tipo.NodoAST]
+    ]
+  });
   let i=0;
-  while (i<tokens1.length && Peque.Parser.coincideToken(tokens2[desde+i], tokens1[i])) {
+  while (i<tokensModelo.length && Peque.Parser.coincideToken_Con_(tokensModelo[i], tokensEntrada[desde+i])) {
     i++;
   }
-  return i == tokens1.length;
+  return i == tokensModelo.length;
 };
 
 Peque.Parser._Parser.prototype._líneasDeTokens = function(tokens) {
@@ -565,7 +606,7 @@ Peque.Parser._Parser.prototype._línea_AjustadaA_ = function(líneas, inicio, co
         }
         línea = líneas[resultado.i];
         resultado.i++;
-        if (proximo.tipoNodo != "Estrella") {
+        if (proximo.clase != "Estrella") {
           i++;
         }
         j=0;
@@ -574,145 +615,154 @@ Peque.Parser._Parser.prototype._línea_AjustadaA_ = function(líneas, inicio, co
       } else {
         return Mila.Nada;
       }
-    } else if (proximo.tipoNodo == "Varios") {
-      if (i==tokens.length-1) {
-        let contenido = línea.sinLosPrimeros_(j);
-        if (Peque.Parser.seAjustaVarios(contenido, proximo.clave())) {
-          resultado.línea.push(this._nodoVarios(contenido, proximo.clave()));
-          return resultado;
-        } else {
-          return Mila.Nada;
-        }
-      }
-      i++;
-      let proximoProximo = tokens[i];
-      let varios = [línea[j]];
-      j++;
-      while (j < línea.length && !Peque.Parser.coincideToken(proximoProximo, línea[j])) {
-        varios.push(línea[j]);
-        j++;
-      }
-      if (j < línea.length) {
-        if (Peque.Parser.seAjustaVarios(varios, proximo.clave())) {
-          resultado.línea.push(this._nodoVarios(varios, proximo.clave()));
-        } else {
-          return Mila.Nada;
-        }
-      }
-    } else if (Peque.Parser.coincideToken(proximo, línea[j])) {
-      let tokenAjustado = this._token_AjustadoA_(línea[j], proximo);
-      if (tokenAjustado.esAlgo()) {
-        resultado.línea.push(tokenAjustado);
+    } else {
+      let resultadoLíneaPróximo = this.intentoDeAjustarLínea_A_(línea, j, proximo, tokens.sinLosPrimeros_(i+1));
+      if (resultadoLíneaPróximo.esAlgo()) {
+        i += resultadoLíneaPróximo.i;
+        j = resultadoLíneaPróximo.j;
+        resultado.línea.ConcatenarCon_(resultadoLíneaPróximo.n);
       } else {
         return Mila.Nada;
       }
-      if (proximo.tipoNodo != "Estrella") {
-        i++;
-      }
-      j++;
-    } else if (Peque.Parser.esOpcional(proximo)) {
-      i++;
-    } else {
-      return Mila.Nada;
     }
   }
   if (j < línea.length) {
     return Mila.Nada;
   }
+  resultado.textoOriginal = resultado.línea.map(x=>x.textoOriginal).join(" ");
   return resultado;
 };
 
-Peque.Parser._Parser.prototype._token_AjustadoA_ = function(token, tokenConstruccion) {
-  // PRE: los tokens coinciden
-  switch (tokenConstruccion.tipoNodo) {
-    case "Grupo":
-      return this._nodoGrupo(token);
+Peque.Parser._Parser.prototype.intentoDeAjustarLínea_A_ = function(línea, j, proximo, siguientes) {
+  let rec;
+  let nodos = [línea[j]];
+  let nuevaJ = j+1;
+  if (proximo.esTokenAtómico()) {
+    switch (proximo.clase) {
+      case "Grupo":
+        return (línea[j].tipoNodo == "Grupo" && línea[j].clase() == proximo.contenido)
+          ? {i:1, j:j+1, n:[this._nodoGrupo(línea[j])]}
+          : Mila.Nada
+        ;
+      case "Recursivo":
+        nuevaJ = this.AcumularNodosDe_En_HastaColisionar(línea, nodos, siguientes, nuevaJ);
+        if (siguientes.esVacia() || nuevaJ < línea.length) {
+          return {i:1, j:nuevaJ, n:[this._recursión(nodos, proximo.contenido)]}
+        } else {
+          return {i:1, j:nuevaJ, n:[]};
+        }
+      case "Identificador":
+        nuevaJ = this.AcumularNodosDe_En_HastaColisionar(línea, nodos, siguientes, nuevaJ);
+        return {i:1, j:nuevaJ, n:[nID(nodos)]};
+      default:
+        return Peque.Parser.coincideToken_Con_(proximo, línea[j]) ? {i:1, j:j+1, n:[línea[j]]} : Mila.Nada;
+    }
   }
-  return token;
+  switch (proximo.clase) {
+    case "Pipe":
+      for (let nodo of proximo.opciones()) {
+        rec = this.intentoDeAjustarLínea_A_(línea, j, nodo, siguientes);
+        if (rec.esAlgo()) {
+          return rec;
+        }
+      }
+      return Mila.Nada;
+    case "Opcional":
+      rec = this.intentoDeAjustarLínea_A_(línea, j, proximo.nodo(), siguientes);
+      return (rec.esAlgo()) ? rec : {i:1, j, n:[]};
+    case "Estrella":
+      rec = this.intentoDeAjustarLínea_A_(línea, j, proximo.nodo(), siguientes.cons(proximo));
+      return (rec.esAlgo()) ? Object.assign(rec, {i:0}) : {i:1, j, n:[]};
+    case "Secuencia":
+      let v = proximo.contenido();
+      let resultado = {i:1, j, n:[]};
+      let i=0;
+      let nuevosSiguientes = v.concatenadaCon_(siguientes);
+      while (i<v.length) {
+        nuevosSiguientes.SacarPrimero();
+        rec = this.intentoDeAjustarLínea_A_(línea, resultado.j, v[i], nuevosSiguientes);
+        if (rec.esNada()) {
+          return Mila.Nada;
+        }
+        resultado.j = rec.j;
+        resultado.n.ConcatenarCon_(rec.n);
+        i+=rec.i;
+      }
+      return resultado;
+  }
 };
 
-Peque.Parser.seAjustaVarios = function(variosNodos, clave) {
-  return true;
+Peque.Parser._Parser.prototype.AcumularNodosDe_En_HastaColisionar = function(línea, nodos, siguientes, j) {
+  let nuevaJ = j;
+  while (nuevaJ < línea.length &&
+    !Peque.Parser.token_ColisionaCon_(línea[nuevaJ], siguientes)
+  ) {
+    nodos.push(línea[nuevaJ]);
+    nuevaJ++;
+  }
+  return nuevaJ;
 };
 
-Peque.Parser._Parser.prototype._nodoVarios = function(variosNodos, clave) {
-  switch (clave) {
-    case "IDENTIFICADOR":
-      return Mila.AST.nuevoNodo({
-        tipoNodo: "Identificador",
-        campos: {identificador: variosNodos.map(Peque.Parser.textoOriginal).join(" ")}
-      });
-    case "EXPRESIÓN":
-      const nodos = [];
-      this._AgregarNodos(nodos, [variosNodos], 0, clave);
-      return Peque.Parser.nodoExpresión(nodos);
+Peque.Parser.token_ColisionaCon_ = function(token, siguientes) {
+  let tokens = siguientes.esUnaLista() ? siguientes : [siguientes];
+  if (tokens.esVacia()) {
+    return false;
   }
-  return Mila.AST.nuevoNodo({
-    tipoNodo: clave
-  });
+  let modelo = tokens[0];
+  switch (modelo.clase) {
+    case "Pipe":
+      return modelo.opciones().algunoCumple_(t => Peque.Parser.token_ColisionaCon_(token, t)) || (
+        Peque.Parser.esOpcional(modelo) &&
+        Peque.Parser.token_ColisionaCon_(token, tokens.sinElPrimero())
+      );
+    case "Opcional":
+      return Peque.Parser.token_ColisionaCon_(token, modelo.nodo()) ||
+        Peque.Parser.token_ColisionaCon_(token, tokens.sinElPrimero());
+    case "Estrella":
+      return Peque.Parser.token_ColisionaCon_(token, modelo.nodo()) ||
+        Peque.Parser.token_ColisionaCon_(token, tokens.sinElPrimero());
+    case "Secuencia":
+        return Peque.Parser.token_ColisionaCon_(token, modelo.contenido().concatenadaCon_(tokens.sinElPrimero()));
+  }
+  return Peque.Parser.coincideToken_Con_(modelo, token);
 };
 
-Peque.Parser.nodoExpresión = function(nodos) { // Debería recibir una lista con un único elemento
-  if (nodos.length != 1) {
-    console.log("Expresión con longitud distinta a 1");
-    debugger;
-    return Mila.AST.nuevoNodo({
-      tipoNodo: "EXPRESIÓN",
-      hijos: {contenido:nodos}
-    });
-  }
+Peque.Parser._Parser.prototype._recursión = function(línea, clase) {
+  const nodos = [];
+  this._AgregarLíneas_ANodos_EnContexto_([línea], nodos, clase);
+  if (nodos.length != 1) { debugger; }
   return nodos[0];
-}
+};
 
 Peque.Parser._Parser.prototype._nodoGrupo = function(nodo) {
   const nodos = [];
   const líneas = this._líneasDeTokens(nodo.contenido());
   let i=0;
   while (i.esAlgo() && i<líneas.length) {
-    i = this._AgregarNodos(nodos, líneas, i, nodo.clave());
+    i = this._AgregarLíneas_ANodos_EnContexto_(líneas, nodos, nodo.clase(), i);
   }
-  return Mila.AST.nuevoNodo({
-    tipoNodo: nodo.clave(),
-    hijos: {contenido: nodos}
-  });
+  return nG(nodo.clase(), nodos);
 };
 
 Peque.Parser.puedeTerminarAcá = function(tokens, i) {
-  tokens.sinLosPrimeros_(i).todosCumplen_(Peque.Parser.esOpcional);
+  return tokens.sinLosPrimeros_(i).todosCumplen_(Peque.Parser.esOpcional);
 };
 
 Peque.Parser.esOpcional = function(nodo) {
-  return nodo.tipoNodo == "Opcional" || nodo.tipoNodo == "Estrella";
+  return nodo.clase == "Opcional" || nodo.clase == "Estrella" ||
+    (nodo.clase == "Pipe" && nodo.opciones().algunoCumple_(Peque.Parser.esOpcional)) ||
+    (nodo.clase == "Varios" && nodo.contenido.todosCumplen_(Peque.Parser.esOpcional));
 };
 
 Peque.Parser.vieneUnSalto = function(nodo) {
-  return nodo.tipoNodo == "Salto" ||
-    (nodo.tipoNodo == "Opcional" && Peque.Parser.vieneUnSalto(nodo.nodo())) ||
-    (nodo.tipoNodo == "Estrella" && Peque.Parser.vieneUnSalto(nodo.nodo())) ||
-    (nodo.tipoNodo == "Pipe" && nodo.opciones().algunoCumple_(Peque.Parser.vieneUnSalto))
-  ;
-};
-
-Peque.Parser.textoOriginal = function (nodo) {
-  switch (nodo.tipoNodo) {
-    case "Texto":
-      return nodo.texto();
-    case "Línea":
-      return nodo.texto();
-    case "Salto":
-      return '\\n';
-    case "Indentación+":
-      return `I+`;
-    case "Indentación-":
-      return `I-`;
-    case "Grupo":
-      return `${nodo.clave()} ${nodo.contenido().map(Peque.Parser.textoOriginal)}`;
-    case "Varios":
-      return `${nodo.contenido().map(Peque.Parser.textoOriginal).join(" ")}`;
-    case "Identificador":
-      return `${nodo.identificador()}`;
+  if (nodo.esTokenAtómico()) {
+    return nodo.clase == "Salto";
   }
-  return "";
+  return (nodo.clase == "Pipe" && nodo.opciones().algunoCumple_(Peque.Parser.vieneUnSalto)) ||
+        (nodo.clase == "Opcional" && Peque.Parser.vieneUnSalto(nodo.nodo())) ||
+        (nodo.clase == "Estrella" && Peque.Parser.vieneUnSalto(nodo.nodo())) ||
+        (nodo.clase == "Secuencia" && nodo.contenido().length > 0 && Peque.Parser.vieneUnSalto(nodo.contenido()))
+  ;
 };
 
 Peque.Parser._Parser.prototype.CambiarTamañoTabA_ = function(nuevoTamañoTab) {
@@ -793,7 +843,7 @@ Peque.Parser._Parser.prototype.AgregarSeparadorDeLínea_ = function(id, tokens) 
     Proposito: "Agregar el token dado o la secuencia de tokens dada como separador de línea para este parser",
     Precondiciones: [
       "No existe un separador de línea con el id dado en este parser",
-      !this.separadoresDeLínea.defineLaClave_(id)
+      !this.separadoresDeLínea.defineLaClavePropia_(id)
     ],
     Parametros: [
       [id, Mila.Tipo.Texto],
@@ -813,7 +863,7 @@ Peque.Parser._Parser.prototype.AgregarEscapeSaltoDeLínea_ = function(id, tokens
       para este parser",
     Precondiciones: [
       "Existe un separador de línea con el id dado en este parser",
-      this.separadoresDeLínea.defineLaClave_(id)
+      this.separadoresDeLínea.defineLaClavePropia_(id)
     ],
     Parametros: [
       [id, Mila.Tipo.Texto],
@@ -832,7 +882,7 @@ Peque.Parser._Parser.prototype.AgregarCategoríaAgrupamiento = function(categori
     Proposito: "Agregar una categoria con el nombre dado a las categorías de agrupamientos de este parser",
     Precondiciones: [
       "No existe una categoría de agrupamiento con el nombre dado en este parser",
-      !this.agrupadores.defineLaClave_(categoria)
+      !this.agrupadores.defineLaClavePropia_(categoria)
     ],
     Parametros: [
       [categoria, Mila.Tipo.Texto]
@@ -846,7 +896,7 @@ Peque.Parser._Parser.prototype.AgregarAgrupador_En_ = function(agrupador, catego
     Proposito: "Agregar el agrupador dado a la categoría de agrupadores dada de este parser",
     Precondiciones: [
       "Existe la categoría de agrupadores dada en este parser",
-      this.agrupadores.defineLaClave_(categoria)
+      this.agrupadores.defineLaClavePropia_(categoria)
     ],
     Parametros: [
       [agrupador, TipoAgrupador],
@@ -873,7 +923,7 @@ Peque.Parser._Parser.prototype.AgregarCategoríaProducciones = function(categori
     Proposito: "Agregar una categoria con el nombre dado a las categorías de producciones de este parser",
     Precondiciones: [
       "No existe una categoría de producciones con el nombre dado en este parser",
-      !this.producciones.defineLaClave_(categoria)
+      !this.producciones.defineLaClavePropia_(categoria)
     ],
     Parametros: [
       [categoria, Mila.Tipo.Texto]
@@ -887,7 +937,7 @@ Peque.Parser._Parser.prototype.AgregarProduccion_En_ = function(produccion, cate
     Proposito: "Agregar la producción dada a la categoría de producciones dada de este parser",
     Precondiciones: [
       "Existe la categoría de producciones dada en este parser",
-      this.producciones.defineLaClave_(categoria)
+      this.producciones.defineLaClavePropia_(categoria)
     ],
     Parametros: [
       [produccion, Mila.Tipo.ProduccionParserPeque],
