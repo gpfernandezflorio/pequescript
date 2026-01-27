@@ -1,7 +1,7 @@
 Mila.Modulo({
   define:"Demo",
-  necesita:["pequescript","tokens","produccion","$milascript/base","$milascript/ast"],
-  usa:["$milascript/pantalla/todo","parser"]
+  necesita:["../src/todo","$milascript/base","$milascript/ast"],
+  usa:["$milascript/pantalla/todo"]
 });
 
 const tt = Peque.Tokens.texto;
