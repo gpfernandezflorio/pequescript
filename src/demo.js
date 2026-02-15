@@ -16,8 +16,13 @@ const rep = Peque.Tokens.kleene;
 const tg = Peque.Tokens.agrupado;
 const rec = Peque.Tokens.recursivo;
 
-const P = function(tokens, nodo) {
-  return Peque.Parser.Produccion.nueva({tokens, nodo});
+const P = function(tokens, nodoOPropiedades, nodoONada=Mila.Nada) {
+  // se puede invocar como P(textoConAgujeros:String, propiedades:Object, nodo:Function)
+  // o P(tokenOListaDeTokens:(nodoAST | [nodoAST]), nodo:Function)
+  return Peque.Parser.Produccion.nueva(tokens.esUnTexto()
+    ? {tokens, propiedades:nodoOPropiedades, nodo:nodoONada}
+    : {tokens, nodo:nodoOPropiedades}
+  );
 };
 
 Mila.alIniciar(function() {

@@ -104,3 +104,24 @@ Peque.Tokens.recursivo = function(clase) { // No terminal genérico
 Peque.Tokens.tokenIdentificador = function() {
   return Mila.AST.nuevoToken("Identificador");
 };
+
+// Funciones útiles
+
+Peque.Tokens.desdeTexto_ = function(textoConAgujeros, propiedades) {
+  Mila.Contrato({
+    Propósito: ["Describe un token o una lista de tokens a partir de un texto con agujeros y un mapa de propiedades con las cuales completar los agujeros del texto", Mila.Tipo.O([Mila.Tipo.NodoAST,Mila.Tipo.ListaDe_(Mila.Tipo.NodoAST)])],
+    Parámetros: [
+      [textoConAgujeros, Mila.Tipo.Texto], // Algo como "Asignar a {VAR} el valor {VAL}.".
+      [propiedades, Mila.Tipo.Cualquiera] // Debería tener como claves los nombres de los agujeros (e.g. VAR y VAL).
+    ]
+  });
+  return textoConAgujeros.aplicandoReemplazosCon_({
+    indicadorInicioAgujero:"{",
+    escapeInicioAgujero:"{{",
+    indicadorFinAgujero:"}",
+    escapeFinAgujero:"}}",
+    mapaReemplazos:(claveAgujero) => propiedades[claveAgujero],
+    mapaTextos:(texto) => Peque.Tokens.texto(texto.replaceAll("{{","{").replaceAll("}}","}")),
+    composiciónFinal:(lista) => lista.esSingular() ? lista.primero() : lista
+  });
+};
