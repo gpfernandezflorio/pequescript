@@ -149,10 +149,10 @@ Peque.Parser.nuevaConfiguración = function(atributos) {
     ]
   });
   const nuevaConfiguracion = Peque.Parser.atributosPorDefecto.copia();
-  if (atributos.defineLaClavePropia_('tamañoDeTab')) {
+  if (atributos.defineLaClave_('tamañoDeTab')) {
     nuevaConfiguracion.tamañoDeTab = atributos.tamañoDeTab;
   }
-  if (atributos.defineLaClavePropia_('finesDeLínea')) {
+  if (atributos.defineLaClave_('finesDeLínea')) {
     let valor = atributos.finesDeLínea;
     if (!valor.esUnaLista()) {
       valor = [valor];
@@ -161,7 +161,7 @@ Peque.Parser.nuevaConfiguración = function(atributos) {
       return x.esUnTexto() ? configuracionesRapidas.finesDeLínea[x] : x;
     });
   }
-  if (atributos.defineLaClavePropia_('agrupadores')) {
+  if (atributos.defineLaClave_('agrupadores')) {
     for (let categoria of atributos.agrupadores.clavesDefinidas()) {
       let valor = atributos.agrupadores[categoria];
       if (!valor.esUnaLista()) {
@@ -172,7 +172,7 @@ Peque.Parser.nuevaConfiguración = function(atributos) {
       });
     }
   }
-  if (atributos.defineLaClavePropia_('producciones')) {
+  if (atributos.defineLaClave_('producciones')) {
     nuevaConfiguracion.producciones = atributos.producciones;
   }
   return nuevaConfiguracion;
@@ -854,7 +854,7 @@ Peque.Parser._Parser.prototype.AgregarSeparadorDeLínea_ = function(id, tokens) 
     Proposito: "Agregar el token dado o la secuencia de tokens dada como separador de línea para este parser",
     Precondiciones: [
       "No existe un separador de línea con el id dado en este parser",
-      !this.separadoresDeLínea.defineLaClavePropia_(id)
+      !this.separadoresDeLínea.defineLaClave_(id)
     ],
     Parametros: [
       [id, Mila.Tipo.Texto],
@@ -874,7 +874,7 @@ Peque.Parser._Parser.prototype.AgregarEscapeSaltoDeLínea_ = function(id, tokens
       para este parser",
     Precondiciones: [
       "Existe un separador de línea con el id dado en este parser",
-      this.separadoresDeLínea.defineLaClavePropia_(id)
+      this.separadoresDeLínea.defineLaClave_(id)
     ],
     Parametros: [
       [id, Mila.Tipo.Texto],
@@ -893,7 +893,7 @@ Peque.Parser._Parser.prototype.AgregarCategoríaAgrupamiento = function(categori
     Proposito: "Agregar una categoria con el nombre dado a las categorías de agrupamientos de este parser",
     Precondiciones: [
       "No existe una categoría de agrupamiento con el nombre dado en este parser",
-      !this.agrupadores.defineLaClavePropia_(categoria)
+      !this.agrupadores.defineLaClave_(categoria)
     ],
     Parametros: [
       [categoria, Mila.Tipo.Texto]
@@ -907,7 +907,7 @@ Peque.Parser._Parser.prototype.AgregarAgrupador_En_ = function(agrupador, catego
     Proposito: "Agregar el agrupador dado a la categoría de agrupadores dada de este parser",
     Precondiciones: [
       "Existe la categoría de agrupadores dada en este parser",
-      this.agrupadores.defineLaClavePropia_(categoria)
+      this.agrupadores.defineLaClave_(categoria)
     ],
     Parametros: [
       [agrupador, TipoAgrupador],
@@ -934,7 +934,7 @@ Peque.Parser._Parser.prototype.AgregarCategoríaProducciones = function(categori
     Proposito: "Agregar una categoria con el nombre dado a las categorías de producciones de este parser",
     Precondiciones: [
       "No existe una categoría de producciones con el nombre dado en este parser",
-      !this.producciones.defineLaClavePropia_(categoria)
+      !this.producciones.defineLaClave_(categoria)
     ],
     Parametros: [
       [categoria, Mila.Tipo.Texto]
@@ -948,7 +948,7 @@ Peque.Parser._Parser.prototype.AgregarProduccion_En_ = function(produccion, cate
     Proposito: "Agregar la producción dada a la categoría de producciones dada de este parser",
     Precondiciones: [
       "Existe la categoría de producciones dada en este parser",
-      this.producciones.defineLaClavePropia_(categoria)
+      this.producciones.defineLaClave_(categoria)
     ],
     Parametros: [
       [produccion, Mila.Tipo.ProduccionParserPeque],
