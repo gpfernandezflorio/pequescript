@@ -1,4 +1,4 @@
-Mila.Modulo({
+Mila.Módulo({
   define:"Demo",
   necesita:["../src/todo","$milascript/base","$milascript/ast"],
   usa:["$milascript/pantalla/todo"]

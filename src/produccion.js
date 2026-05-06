@@ -1,4 +1,4 @@
-Mila.Modulo({
+Mila.Módulo({
   define:"Peque.Parser.Produccion",
   necesita:["parser","$milascript/base","$milascript/ast"],
   usa:["tokens"]

@@ -1,4 +1,4 @@
-Mila.Modulo({
+Mila.Módulo({
   define:"Peque.Parser.Estado",
   necesita:["parser","$milascript/base"]
 });

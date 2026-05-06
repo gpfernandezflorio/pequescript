@@ -1,4 +1,4 @@
-Mila.Modulo({
+Mila.Módulo({
   define:"Peque.Tokens",
   usa:"$milascript/ast",
   necesita:["pequescript","$milascript/base"]
