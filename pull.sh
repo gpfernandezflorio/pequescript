@@ -1,4 +1,6 @@
 git pull
 cd build/milascript
 git pull
-cd ..
+cd ../../src/milascript
+git pull
+cd ../..
