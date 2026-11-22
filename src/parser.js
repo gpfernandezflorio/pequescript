@@ -29,7 +29,7 @@ const TipoAgrupador = Mila.Tipo.RegistroCon_({
     // o Mila.Nada si no.
   "cierra":Mila.Tipo.O([TipoToken, Mila.Tipo.Funcion]), // Si es una función toma el objeto que devolvió "abre",
     // la lista de tokens y el índice i y devuelve un objeto con el campo "cantidad" (la cantidad de tokens
-    // que matcheó) y, opcionalmente, el campo "agregar" (un token o una lista de tokens a agregar tras el match)
+    // que matcheó) y, opcionalmente, el campo "agregar" (un nodo o una lista de nodos a agregar tras el match)
     // si matchea o Mila.Nada si no.
   "?cierraAlFinal":Mila.Tipo.Booleano
 });
@@ -40,6 +40,7 @@ Mila.Tipo.Registrar({
     "?tamañoDeTab":Mila.Tipo.Entero,
     "?finesDeLínea":Mila.Tipo.O([TipoSeparadorLínea, Mila.Tipo.ListaDe_(TipoSeparadorLínea)]),
     "?agrupadores":Mila.Tipo.Registro, // los valores son TipoAgrupador o lista de TipoAgrupador
+    "?agrupadoresIdentificadores":Mila.Tipo.Registro, // los valores son TipoAgrupador o lista de TipoAgrupador
     "?producciones":Mila.Tipo.Registro // los valores son ProduccionParserPeque o lista de ProduccionParserPeque
   },
   inferible: false
@@ -75,14 +76,22 @@ const configuracionesRapidas = {
       tokens:tt(";")
     }
   },
-  agrupadores: {
+  agrupadores: { // y agrupadoresIdentificadores
     paréntesis:{ // encerrado entre paréntesis
       abre:[tt("(")],
       cierra:[tt(")")]
     },
+    corchetes:{ // encerrado entre corchetes
+      abre:[tt("[")],
+      cierra:[tt("]")]
+    },
     llaves:{ // encerrado entre llaves
       abre:[tt("{")],
       cierra:[tt("}")]
+    },
+    menorYMayor:{ // encerrado entre < y >
+      abre:[tt("<")],
+      cierra:[tt(">")]
     },
     llavesConSalto:{ // encerrado entre paréntesis pero con un salto justo después de abrir
       abre:[tt("{"),ts],
@@ -117,7 +126,7 @@ const configuracionesRapidas = {
         }
         return k < apertura.aumentoIndentación
           ? Mila.Nada
-          : {cantidad:k, agregar:ts}
+          : {cantidad:k, agregar:nS()}
         ;
       }, cierraAlFinal:true
     },
@@ -135,16 +144,17 @@ Peque.Parser.atributosPorDefecto = {
     configuracionesRapidas.finesDeLínea.puntoYComa
   ],
   agrupadores:{},
+  agrupadoresIdentificadores:{},
   producciones:{}
 };
 
 Peque.Parser.nuevaConfiguración = function(atributos) {
   Mila.Contrato({
-    Proposito: [
+    Propósito: [
       "Describir una nueva configuración de parser Pequescript a partir de los atributos dados",
       Mila.Tipo.AtributosParserPeque
     ],
-    Parametros: [
+    Parámetros: [
       [atributos, Mila.Tipo.Registro] // claves de acceso rápido
     ]
   });
@@ -172,6 +182,17 @@ Peque.Parser.nuevaConfiguración = function(atributos) {
       });
     }
   }
+  if (atributos.defineLaClave_('agrupadoresIdentificadores')) {
+    for (let categoria of atributos.agrupadoresIdentificadores.clavesDefinidas()) {
+      let valor = atributos.agrupadoresIdentificadores[categoria];
+      if (!valor.esUnaLista()) {
+        valor = [valor];
+      }
+      nuevaConfiguracion.agrupadoresIdentificadores[categoria] = valor.transformados(function (x) {
+        return x.esUnTexto() ? configuracionesRapidas.agrupadores[x] : x;
+      });
+    }
+  }
   if (atributos.defineLaClave_('producciones')) {
     nuevaConfiguracion.producciones = atributos.producciones;
   }
@@ -180,11 +201,11 @@ Peque.Parser.nuevaConfiguración = function(atributos) {
 
 Peque.Parser.nuevo = function(atributos=Peque.Parser.atributosPorDefecto) {
   Mila.Contrato({
-    Proposito: [
+    Propósito: [
       "Describir un nuevo parser de Pequescript configurado a partir de los atributos dados",
       Mila.Tipo.ParserPeque
     ],
-    Parametros: [
+    Parámetros: [
       [atributos, Mila.Tipo.AtributosParserPeque]
     ]
   });
@@ -201,6 +222,10 @@ Peque.Parser.nuevo = function(atributos=Peque.Parser.atributosPorDefecto) {
     ? atributos.agrupadores
     : Peque.Parser.atributosPorDefecto.agrupadores
   );
+  nuevo.CambiarAgrupadoresIdentificadoresA_('agrupadoresIdentificadores' in atributos
+    ? atributos.agrupadoresIdentificadores
+    : Peque.Parser.atributosPorDefecto.agrupadoresIdentificadores
+  );
   nuevo.CambiarProduccionesA_('producciones' in atributos
     ? atributos.producciones
     : Peque.Parser.atributosPorDefecto.producciones
@@ -208,7 +233,10 @@ Peque.Parser.nuevo = function(atributos=Peque.Parser.atributosPorDefecto) {
   return nuevo;
 };
 
-Peque.Parser._Parser = function ParserPeque() {};
+Peque.Parser._Parser = function ParserPeque() {
+  this.produccionesParaRecolecciónDeDefiniciones = {};
+  this.produccionesTemporales = {};
+};
 
 Mila.Tipo.Registrar({
   nombre: "ParserPeque",
@@ -217,11 +245,11 @@ Mila.Tipo.Registrar({
 
 Peque.Parser._Parser.prototype.parsear = function(entrada, atributos={}) {
   Mila.Contrato({
-    Proposito: [
+    Propósito: [
       "Describir el resultado de parsear la cadena con este parser",
       Mila.Tipo.ResultadoParserPeque
     ],
-    Parametros: [
+    Parámetros: [
       [entrada, Mila.Tipo.Texto]
       [atributos, Mila.Tipo.AtributosParseoPeque]
     ]
@@ -233,7 +261,9 @@ Peque.Parser._Parser.prototype.parsear = function(entrada, atributos={}) {
   this._AgregarTokensEntreLíneas();
   this._TokenizarLíneas();
   this._AgruparTokens();
-  this._ParsearTokens();
+  this._RecogerDefiniciones();
+  this._PasrsingFinal();
+  this._RestaurarParser();
   return this.estado.cadena();
 };
 
@@ -296,16 +326,21 @@ Peque.Parser._Parser.prototype._TokenizarTokenLínea_ = function(tokenLínea) {
 
 Peque.Parser._Parser.prototype._AgruparTokens = function() {
   let tokensAnteriores = this.estado.cadena();
+  let todosLosTokens = this._tokens_agrupadosCon_(tokensAnteriores, this.iniciadores);
+  this.estado.ActualizarCadena_(todosLosTokens);
+};
+
+Peque.Parser._Parser.prototype._tokens_agrupadosCon_ = function(listaDeTokens, iniciadores) {
   let todosLosTokens = [];
   let grupos = [];
   let i=0;
-  while (i < tokensAnteriores.length) {
-    let grupo = Peque.Parser.grupoQueInicia(tokensAnteriores, i, this.iniciadores);
+  while (i < listaDeTokens.length) {
+    let grupo = Peque.Parser.grupoQueInicia(listaDeTokens, i, iniciadores);
     if (grupo.esAlgo()) {
       grupos.push(grupo);
       i+=grupo.abre.cantidad;
     } else {
-      i = this._ProcesarToken(tokensAnteriores, i, grupos, todosLosTokens);
+      i = this._ProcesarToken(listaDeTokens, i, grupos, todosLosTokens);
     }
   }
   while (!grupos.esVacia() && grupos.ultimo().cierraAlFinal) {
@@ -317,9 +352,9 @@ Peque.Parser._Parser.prototype._AgruparTokens = function() {
   }
   if (!grupos.esVacia()) {
     // Error
-    return;
+    return [];
   }
-  this.estado.ActualizarCadena_(todosLosTokens);
+  return todosLosTokens;
 };
 
 Peque.Parser._Parser.prototype._ProcesarToken = function(tokensAnteriores, i, grupos, todosLosTokens) {
@@ -364,6 +399,46 @@ Peque.Parser._Parser.prototype._ProcesarToken = function(tokensAnteriores, i, gr
   return i;
 };
 
+Peque.Parser._Parser.prototype._RecogerDefiniciones = function() {
+  const esteParser = this;
+
+  // Anulo temporalmente las producciones de comandos y expresiones
+  esteParser.produccionesOriginales = {};
+  esteParser.produccionesParaRecolecciónDeDefiniciones.ConCadaParClaveValor(
+    function(categoría, produccionesParaRecolecciónDeDefiniciones) {
+      esteParser.produccionesOriginales[categoría] = esteParser.producciones[categoría];
+      esteParser.producciones[categoría] = produccionesParaRecolecciónDeDefiniciones;
+    }
+  );
+
+  // Hago el parsing con las producciones ficticias
+  const nodosSoloDefiniciones = this._ParsearTokens();
+
+  // Anulo las producciones usadas para recolectar definiciones
+  esteParser.produccionesOriginales.ConCadaClave(
+    function(categoría) {
+      esteParser.producciones[categoría] = [];
+    }
+  );
+
+  // Agrego las producciones derivadas de las definiciones
+  nodosSoloDefiniciones.conCadaUno(function(nodoDefinción) {
+    if (nodoDefinción.sabeResponder_("nombre") && nodoDefinción.sabeResponder_("categoríaDefinición")) {
+      const posibleProducción = esteParser._producciónParaInvocaciónDeDefinición_(nodoDefinción.nombre());
+      if (posibleProducción.esAlgo()) {
+        esteParser.producciones[nodoDefinción.categoríaDefinición()].push(posibleProducción);
+      }
+    }
+  });
+
+  // Agrego las producciones originales
+  esteParser.produccionesOriginales.ConCadaParClaveValor(
+    function(categoría, produccionesOriginales) {
+      esteParser.producciones[categoría].ConcatenarCon_(produccionesOriginales);
+    }
+  );
+};
+
 Peque.Parser._Parser.prototype._ParsearTokens = function() {
   let tokensLimpios = this._tokensLimpios(this.estado.cadena());
   const líneas = this._líneasDeTokens(tokensLimpios);
@@ -372,7 +447,21 @@ Peque.Parser._Parser.prototype._ParsearTokens = function() {
   while (i.esAlgo() && i<líneas.length) {
     i = this._AgregarLíneas_ANodos_EnContexto_(líneas, nodos, "DEFINICION", i);
   }
-  this.estado.ActualizarCadena_(nodos);
+  return nodos;
+};
+
+Peque.Parser._Parser.prototype._PasrsingFinal = function() {
+  // TODO: se puede optimizar para que, en lugar de parsear todo otra vez, busque los nodos temporales (COMANDO_TEMPORAL_IDENTIFICADOR, COMANDO_TEMPORAL_GRUPO, EXPRESIÓN_TEMPORAL_IDENTIFICADOR y EXPRESIÓN_TEMPORAL_GRUPO) y los reemplace por el resultado de parsear a sus hijos.
+  this.estado.ActualizarCadena_(this._ParsearTokens());
+};
+
+Peque.Parser._Parser.prototype._RestaurarParser = function() {
+  const esteParser = this;
+  esteParser.produccionesOriginales.ConCadaParClaveValor(
+    function(categoría, produccionesOriginales) {
+      esteParser.producciones[categoría] = produccionesOriginales;
+    }
+  );
 };
 
 Peque.Parser._Parser.prototype._AgregarLíneas_ANodos_EnContexto_ = function(líneas, nodos, contexto, i=0) {
@@ -522,8 +611,8 @@ Peque.Parser._Parser.prototype._recalcularIndentación = function(tokens, i, tok
 
 Peque.Parser.coincideToken_Con_ = function(tokenModelo, tokenEntrada) {
   Mila.Contrato({
-    Proposito:["Indica si los dos tokens dados coinciden.", Mila.Tipo.Booleano],
-    Parametros:[
+    Propósito:["Indica si los dos tokens dados coinciden.", Mila.Tipo.Booleano],
+    Parámetros:[
       [tokenModelo, Mila.Tipo.Token],
       [tokenEntrada, Mila.Tipo.NodoAST]
     ]
@@ -541,8 +630,8 @@ Peque.Parser.coincideToken_Con_ = function(tokenModelo, tokenEntrada) {
 
 Peque.Parser.coincideTokensDesde = function(tokensModelo, tokensEntrada, desde=0) {
   Mila.Contrato({
-    Proposito:["Indica si los tokens en la primera lista dada coinciden con los de la segunda a partir del índice dado.", Mila.Tipo.Booleano],
-    Parametros:[
+    Propósito:["Indica si los tokens en la primera lista dada coinciden con los de la segunda a partir del índice dado.", Mila.Tipo.Booleano],
+    Parámetros:[
       [tokensModelo, Mila.Tipo.ListaDe_(Mila.Tipo.Token)],
       [tokensEntrada, Mila.Tipo.ListaDe_(Mila.Tipo.NodoAST)],
       [desde, Mila.Tipo.NodoAST]
@@ -778,9 +867,9 @@ Peque.Parser.vieneUnSalto = function(nodo) {
 
 Peque.Parser._Parser.prototype.CambiarTamañoTabA_ = function(nuevoTamañoTab) {
   Mila.Contrato({
-    Proposito: "Cambiar el tamaño de tabs por defecto que este parser espera en las entradas a parsear\
+    Propósito: "Cambiar el tamaño de tabs por defecto que este parser espera en las entradas a parsear\
       por el tamaño dado",
-    Parametros: [
+    Parámetros: [
       [nuevoTamañoTab, Mila.Tipo.Entero]
     ]
   });
@@ -789,9 +878,9 @@ Peque.Parser._Parser.prototype.CambiarTamañoTabA_ = function(nuevoTamañoTab) {
 
 Peque.Parser._Parser.prototype.CambiarSeparadoresDeLíneaA_ = function(nuevosSeparadoresDeLínea) {
   Mila.Contrato({
-    Proposito: "Cambiar los separadores de línea que este parser usará para parsear entradas\
+    Propósito: "Cambiar los separadores de línea que este parser usará para parsear entradas\
       por los dados",
-    Parametros: [
+    Parámetros: [
       [nuevosSeparadoresDeLínea, Mila.Tipo.O([TipoSeparadorLínea, Mila.Tipo.ListaDe_(TipoSeparadorLínea)])]
     ]
   });
@@ -812,8 +901,8 @@ Peque.Parser._Parser.prototype.CambiarSeparadoresDeLíneaA_ = function(nuevosSep
 
 Peque.Parser._Parser.prototype.CambiarAgrupadoresA_ = function(nuevosAgrupadores) {
   Mila.Contrato({
-    Proposito: "Cambiar los agrupadores de este parser por los dados",
-    Parametros: [
+    Propósito: "Cambiar los agrupadores de este parser por los dados",
+    Parámetros: [
       [nuevosAgrupadores, Mila.Tipo.Registro] // las claves son TipoAgrupador o lista de TipoAgrupador
     ]
   });
@@ -830,14 +919,35 @@ Peque.Parser._Parser.prototype.CambiarAgrupadoresA_ = function(nuevosAgrupadores
   }
 };
 
+Peque.Parser._Parser.prototype.CambiarAgrupadoresIdentificadoresA_ = function(nuevosAgrupadoresIdentificadores) {
+  Mila.Contrato({
+    Propósito: "Cambiar los agrupadores de identificadores de este parser por los dados",
+    Parámetros: [
+      [nuevosAgrupadoresIdentificadores, Mila.Tipo.Registro] // las claves son TipoAgrupador o lista de TipoAgrupador
+    ]
+  });
+  this.agrupadoresIdentificadores = {};
+  this.iniciadoresIdentificadores = [];
+  for (let categoria in nuevosAgrupadoresIdentificadores) {
+    this.AgregarCategoríaAgrupamientoIdentificadores(categoria);
+    for (let agrupador of nuevosAgrupadoresIdentificadores[categoria].esUnaLista()
+      ? nuevosAgrupadoresIdentificadores[categoria]
+      : [nuevosAgrupadoresIdentificadores[categoria]]
+    ) {
+      this.AgregarAgrupadorIdentificador_En_(agrupador, categoria);
+    }
+  }
+};
+
 Peque.Parser._Parser.prototype.CambiarProduccionesA_ = function(nuevasProducciones) {
   Mila.Contrato({
-    Proposito: "Cambiar las producciones de este parser por las dados",
-    Parametros: [
+    Propósito: "Cambiar las producciones de este parser por las dados",
+    Parámetros: [
       [nuevasProducciones, Mila.Tipo.Registro] // las claves son ProduccionParserPeque o lista de ProduccionParserPeque
     ]
   });
   this.producciones = {};
+  this.produccionesParaRecolecciónDeDefiniciones = {};
   for (let categoria in nuevasProducciones) {
     this.AgregarCategoríaProducciones(categoria);
     for (let produccion of nuevasProducciones[categoria].esUnaLista()
@@ -851,12 +961,12 @@ Peque.Parser._Parser.prototype.CambiarProduccionesA_ = function(nuevasProduccion
 
 Peque.Parser._Parser.prototype.AgregarSeparadorDeLínea_ = function(id, tokens) {
   Mila.Contrato({
-    Proposito: "Agregar el token dado o la secuencia de tokens dada como separador de línea para este parser",
+    Propósito: "Agregar el token dado o la secuencia de tokens dada como separador de línea para este parser",
     Precondiciones: [
       "No existe un separador de línea con el id dado en este parser",
       !this.separadoresDeLínea.defineLaClave_(id)
     ],
-    Parametros: [
+    Parámetros: [
       [id, Mila.Tipo.Texto],
       [tokens, TipoToken]
     ]
@@ -870,13 +980,13 @@ Peque.Parser._Parser.prototype.AgregarSeparadorDeLínea_ = function(id, tokens) 
 
 Peque.Parser._Parser.prototype.AgregarEscapeSaltoDeLínea_ = function(id, tokens) {
   Mila.Contrato({
-    Proposito: "Agregar el token dado o la secuencia de tokens dada como secuencia de escape de línea\
+    Propósito: "Agregar el token dado o la secuencia de tokens dada como secuencia de escape de línea\
       para este parser",
     Precondiciones: [
       "Existe un separador de línea con el id dado en este parser",
       this.separadoresDeLínea.defineLaClave_(id)
     ],
-    Parametros: [
+    Parámetros: [
       [id, Mila.Tipo.Texto],
       [tokens, TipoToken]
     ]
@@ -890,26 +1000,40 @@ Peque.Parser._Parser.prototype.AgregarEscapeSaltoDeLínea_ = function(id, tokens
 
 Peque.Parser._Parser.prototype.AgregarCategoríaAgrupamiento = function(categoria) {
   Mila.Contrato({
-    Proposito: "Agregar una categoria con el nombre dado a las categorías de agrupamientos de este parser",
+    Propósito: "Agregar una categoria con el nombre dado a las categorías de agrupamientos de este parser",
     Precondiciones: [
       "No existe una categoría de agrupamiento con el nombre dado en este parser",
       !this.agrupadores.defineLaClave_(categoria)
     ],
-    Parametros: [
+    Parámetros: [
       [categoria, Mila.Tipo.Texto]
     ]
   });
   this.agrupadores[categoria] = [];
 };
 
+Peque.Parser._Parser.prototype.AgregarCategoríaAgrupamientoIdentificadores = function(categoria) {
+  Mila.Contrato({
+    Propósito: "Agregar una categoria con el nombre dado a las categorías de agrupamientos de identificarores de este parser",
+    Precondiciones: [
+      "No existe una categoría de agrupamiento de identificadores con el nombre dado en este parser",
+      !this.agrupadoresIdentificadores.defineLaClave_(categoria)
+    ],
+    Parámetros: [
+      [categoria, Mila.Tipo.Texto]
+    ]
+  });
+  this.agrupadoresIdentificadores[categoria] = [];
+};
+
 Peque.Parser._Parser.prototype.AgregarAgrupador_En_ = function(agrupador, categoria) {
   Mila.Contrato({
-    Proposito: "Agregar el agrupador dado a la categoría de agrupadores dada de este parser",
+    Propósito: "Agregar el agrupador dado a la categoría de agrupadores dada de este parser",
     Precondiciones: [
       "Existe la categoría de agrupadores dada en este parser",
       this.agrupadores.defineLaClave_(categoria)
     ],
-    Parametros: [
+    Parámetros: [
       [agrupador, TipoAgrupador],
       [categoria, Mila.Tipo.Texto]
     ]
@@ -929,33 +1053,118 @@ Peque.Parser._Parser.prototype.AgregarAgrupador_En_ = function(agrupador, catego
   });
 };
 
+Peque.Parser._Parser.prototype.AgregarAgrupadorIdentificador_En_ = function(agrupadorIdentificadores, categoria) {
+  Mila.Contrato({
+    Propósito: "Agregar el agrupador de identificadores dado a la categoría de agrupadores de identificadores dada de este parser",
+    Precondiciones: [
+      "Existe la categoría de agrupadores de identificadores dada en este parser",
+      this.agrupadoresIdentificadores.defineLaClave_(categoria)
+    ],
+    Parámetros: [
+      [agrupadorIdentificadores, TipoAgrupador],
+      [categoria, Mila.Tipo.Texto]
+    ]
+  });
+  this.agrupadoresIdentificadores[categoria].push(agrupadorIdentificadores);
+  this.iniciadoresIdentificadores.push({
+    claveAgrupador:categoria,
+    abre: (agrupadorIdentificadores.abre.esUnaLista() || agrupadorIdentificadores.abre.esUnaFuncion())
+      ? agrupadorIdentificadores.abre
+      : [agrupadorIdentificadores.abre]
+    ,
+    cierra: (agrupadorIdentificadores.cierra.esUnaLista() || agrupadorIdentificadores.cierra.esUnaFuncion())
+      ? agrupadorIdentificadores.cierra
+      : [agrupadorIdentificadores.cierra]
+    ,
+    cierraAlFinal: 'cierraAlFinal' in agrupadorIdentificadores ? agrupadorIdentificadores.cierraAlFinal : false
+  });
+};
+
 Peque.Parser._Parser.prototype.AgregarCategoríaProducciones = function(categoria) {
   Mila.Contrato({
-    Proposito: "Agregar una categoria con el nombre dado a las categorías de producciones de este parser",
+    Propósito: "Agregar una categoria con el nombre dado a las categorías de producciones de este parser",
     Precondiciones: [
       "No existe una categoría de producciones con el nombre dado en este parser",
       !this.producciones.defineLaClave_(categoria)
     ],
-    Parametros: [
+    Parámetros: [
       [categoria, Mila.Tipo.Texto]
     ]
   });
   this.producciones[categoria] = [];
+  if (categoria != "DEFINICION") {
+    this.produccionesParaRecolecciónDeDefiniciones[categoria] = [{
+        tokens: Peque.Tokens.agrupado(categoria),
+        categoría: "GRUPO"
+      },{
+        tokens: Peque.Tokens.tokenIdentificador(),
+        categoría: "IDENTIFICADOR"
+    }].transformados(function(datos) {
+      return Peque.Parser.Produccion.nueva({
+        tokens:datos.tokens, nodo:function(tokens) {
+          return Mila.AST.nuevoNodo({
+            tipoNodo: `${categoria}_TEMPORAL_${datos.categoría}`,
+            campos: {tokenOriginal:tokens[0]},
+            textoOriginal: "-",
+            contexto: categoria
+          });
+        }
+      })
+    });
+  }
 };
 
 Peque.Parser._Parser.prototype.AgregarProduccion_En_ = function(produccion, categoria) {
   Mila.Contrato({
-    Proposito: "Agregar la producción dada a la categoría de producciones dada de este parser",
+    Propósito: "Agregar la producción dada a la categoría de producciones dada de este parser",
     Precondiciones: [
       "Existe la categoría de producciones dada en este parser",
       this.producciones.defineLaClave_(categoria)
     ],
-    Parametros: [
+    Parámetros: [
       [produccion, Mila.Tipo.ProduccionParserPeque],
       [categoria, Mila.Tipo.Texto]
     ]
   });
   this.producciones[categoria].push(produccion);
+};
+
+Peque.Parser._Parser.prototype._producciónParaInvocaciónDeDefinición_ = function(nodoNombre) {
+  Mila.Contrato({
+    Propósito:[
+      "Describe una producción que permita parsear una invocación a la definición con el nombre dado",
+      Mila.Tipo.ProduccionParserPeque
+    ],
+    Parámetros:[
+      [nodoNombre, Mila.Tipo.NodoAST]
+    ]
+  });
+  const tokensNombre = this._tokens_agrupadosCon_(nodoNombre.tokens(), this.iniciadoresIdentificadores);
+  const tokensProducción = [];
+  const índicesArgumentos = {};
+  let i = 0;
+  tokensNombre.conCadaUno(function(token) {
+    if (token.tipoNodo == "Atómico") {
+      tokensProducción.push(tt(token.texto()));
+    } else { // token.tipoNodo == "Grupo"
+      índicesArgumentos[token.textoOriginal] = i;
+      tokensProducción.push(Peque.Tokens.recursivo(token.clase()));
+    }
+    i++;
+  });
+  return Peque.Parser.Produccion.nueva({
+    tokens:tokensProducción, nodo:function(tokens) {
+      const argumentos = {};
+      índicesArgumentos.ConCadaParClaveValor(function(nombre, índice) {
+        argumentos[`argumento ${nombre}`] = tokens[índice];
+      });
+      return Mila.AST.nuevoNodo({
+        tipoNodo: "Invocación",
+        campos: {parámetros:índicesArgumentos.clavesDefinidas()},
+        hijos: argumentos.conLaClave_YElValor_("nombre", nodoNombre)
+      });
+    }
+  });
 };
 
 const tokenLíneaTrim = function(línea) {

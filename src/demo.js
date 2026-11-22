@@ -30,8 +30,7 @@ Mila.alIniciar(function() {
 
   Demo.parser = Peque.Parser.nuevo(Peque.Parser.nuevaConfiguración(Demo.configuración));
 
-  Demo.textoInicial = "Procedimiento probar algo {\n  Si no ( no hay nada ) y pasa algo {\n    hacer una\n      cosa\n      maravillosa\n  } Si no {\n    hacer otra\n    cosa\n  }\n}\nProcedimiento otra cosa {\n  Repetir 3 {\n    no hacer ( nada\n    de nada )\n  }\n}";
-  // Demo.textoInicial = "Procedimiento probar algo :\n  Si no ( no hay nada ) y pasa algo :\n    hacer una\n      cosa\n  Si no :\n    hacer otra\n    cosa\nProcedimiento otra cosa :\n  Repetir 3 :\n    no hacer nada";
+  Demo.textoInicial = "Procedimiento Poner < cantidad a poner > bolitas color < color a poner > acá :\n  Repetir cantidad a poner veces :\n    Poner color a poner\n\n\n\nProcedimiento Poner 3 bolitas color rojo acá :\n  Poner 3 bolitas color rojo acá\n\n\n\nProcedimiento probar algo {\n  Si no ( no hay nada ) y pasa algo {\n    hacer una\n      cosa\n      maravillosa\n  } Si no {\n    hacer otra\n    cosa\n  }\n}\nProcedimiento otra cosa {\n  Repetir 3 veces {\n    no hacer ( nada\n    de nada )\n  }\n  Hacer 10 veces {\n    una cosa\n  }\n}\n\n\nProcedimiento Hacer < cantidad > veces [ una accíon ] {\n  Repetir cantidad veces :\n    una acción\n}";
 
   Demo.areaTexto = Mila.Pantalla.nuevaAreaTexto({texto:Demo.textoInicial});
   Demo.areaSalida = Mila.Pantalla.nuevaAreaTexto();
@@ -56,6 +55,10 @@ Demo.configuración = {
     ],
     EXPRESIÓN: "paréntesis",
     IGNORAR: ["indentación"]
+  },
+  agrupadoresIdentificadores: {
+    COMANDO: "corchetes",
+    EXPRESIÓN: "menorYMayor"
   },
   producciones: {
     EXPRESIÓN: [
@@ -138,10 +141,10 @@ Demo.configuración = {
           hijos: {condición:tokens[1], ramaPositiva:tokens[2].contenido()}
         });
       }),
-      P([tt("Repetir"),rec("EXPRESIÓN"),tg("COMANDO")],function(tokens) {
+      P([tt("Repetir"),rec("EXPRESIÓN"),tt("veces"),tg("COMANDO")],function(tokens) {
         return Mila.AST.nuevoNodo({
           tipoNodo: "RepeticiónSimple",
-          hijos: {cantidad:tokens[1], cuerpo:tokens[2].contenido()}
+          hijos: {cantidad:tokens[1], cuerpo:tokens[3].contenido()}
         });
       }),
       P([o([tt("Mientras"),tt("Hasta")]),rec("EXPRESIÓN"),tg("COMANDO")],function(tokens) {
@@ -159,6 +162,7 @@ Demo.configuración = {
       P([tt("Procedimiento"),tid,tg("COMANDO")],function(tokens) {
         return Mila.AST.nuevoNodo({
           tipoNodo: "DefiniciónProcedimiento",
+          campos: {categoríaDefinición:"COMANDO"},
           hijos: {nombre:tokens[1], cuerpo:tokens[2].contenido()}
         });
       })
@@ -220,6 +224,12 @@ Demo.strNodo_ = function(nodo) {
       return `\n${s(nodo.nivel)}Número ${nodo.valor()}`;
     case "LiteralBooleano":
       return `\n${s(nodo.nivel)}Booleano ${nodo.valor()}`;
+    case "Invocación":
+      return `\n${s(nodo.nivel)}Invocación\n${s(nodo.nivel)}-Nombre:${Demo.strNodo_(nodo.nombre())}${
+        nodo.parámetros().transformados(function(nombreParámetro) {
+          return `\n${s(nodo.nivel)}-Argumento ${nombreParámetro}:${Demo.strNodo_(nodo[`argumento ${nombreParámetro}`]())}`
+        }).join("")
+      }`;
     // Temporales (Identificador pasa a ser nodo del programa y Atómico se procesó aparte)
     case "Línea":
       return `\n${s(nodo.nivel)}${nodo.texto()}`;
